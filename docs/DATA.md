@@ -21,9 +21,8 @@ active).
 
 ## Viewing the real results
 
-The real analysis is deployed separately, with real outputs kept out of any
-public repository — see the **Live demo** link in the main
-[README](../README.md). That deployment pulls `data/real/` at startup from
+The real analysis is deployed at **<https://german-gdp-nowcast-dashboard.streamlit.app>**,
+with real outputs kept out of any public repository. That deployment pulls `data/real/` at startup from
 a *separate, private, data-only* GitHub repo via a fine-grained, read-only
 token in Streamlit secrets (see
 [`src/dashboard/bootstrap.py`](../src/dashboard/bootstrap.py)) — the real

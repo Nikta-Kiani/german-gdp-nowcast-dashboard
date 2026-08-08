@@ -2,13 +2,14 @@
 
 ### Interactive companion to a master's thesis on real-time German GDP nowcasting
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://german-gdp-nowcast-dashboard.streamlit.app)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.58-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![Plotly](https://img.shields.io/badge/Plotly-6.x-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/python/)
-[![Data](https://img.shields.io/badge/data-synthetic%20demo%20%7C%20real%20on%20request-lightgrey)](docs/DATA.md)
+[![Data](https://img.shields.io/badge/data-synthetic%20demo%20%28repo%29%20%7C%20real%20%28live%20demo%29-lightgrey)](docs/DATA.md)
 [![Thesis repo](https://img.shields.io/badge/pipeline-german--gdp--nowcasting-2D6CB3)](https://github.com/Nikta-Kiani/german-gdp-nowcasting)
 
-**[Live demo](#) · [Research pipeline repo](https://github.com/Nikta-Kiani/german-gdp-nowcasting) · [Data & privacy notes](docs/DATA.md)**
+**[Live demo](https://german-gdp-nowcast-dashboard.streamlit.app) · [Research pipeline repo](https://github.com/Nikta-Kiani/german-gdp-nowcasting) · [Data & privacy notes](docs/DATA.md)**
 
 > Which monthly indicators actually move a real-time German GDP nowcast, and
 > which models best turn them into a forecast? This dashboard makes that
