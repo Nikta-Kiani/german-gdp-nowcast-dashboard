@@ -1,0 +1,8 @@
+[theme]
+# Brand blue replaces Streamlit's default red for all accents,
+# including multiselect/selectbox tags, sliders and active widgets.
+primaryColor = "#2D6CB3"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F9FC"
+textColor = "#1A2332"
+font = "sans serif"

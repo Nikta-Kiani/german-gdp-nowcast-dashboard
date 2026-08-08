@@ -1,0 +1,22 @@
+ifoCAST_indicator,ifoCAST_group,my_id,my_name,my_category,pub_lag,match,in_panel,note
+ifo_expert_01,Turnover,trn0384,Synthetic turnover indicator #384,Turnover,1.0,exact,False,mapped but absent from transformed panel
+ifo_expert_02,Surveys,srv0155,Synthetic surveys indicator #155,Surveys,1.0,exact,True,
+ifo_expert_03,Orders,ord0371,Synthetic orders indicator #371,Orders,0.0,exact,True,
+ifo_expert_04,Surveys,srv0110,Synthetic surveys indicator #110,Surveys,1.0,exact,True,
+ifo_expert_05,Surveys,srv0301,Synthetic surveys indicator #301,Surveys,2.0,exact,True,
+ifo_expert_06,Surveys,srv0143,Synthetic surveys indicator #143,Surveys,2.0,exact,True,
+ifo_expert_07,Trade,trd0488,Synthetic trade indicator #488,Trade,1.0,exact,True,
+ifo_expert_08,Surveys,srv0141,Synthetic surveys indicator #141,Surveys,0.0,exact,True,
+ifo_expert_09,Financial,fin0545,Synthetic financial indicator #545,Financial,2.0,exact,True,
+ifo_expert_10,Surveys,srv0302,Synthetic surveys indicator #302,Surveys,2.0,exact,True,
+ifo_expert_11,Misc,msc0572,Synthetic misc indicator #572,Misc,2.0,exact,True,
+ifo_expert_12,Financial,fin0547,Synthetic financial indicator #547,Financial,1.0,exact,True,
+ifo_expert_13,Financial,fin0535,Synthetic financial indicator #535,Financial,1.0,exact,True,
+ifo_expert_14,Surveys,srv0328,Synthetic surveys indicator #328,Surveys,1.0,exact,True,
+ifo_expert_15,Surveys,srv0319,Synthetic surveys indicator #319,Surveys,2.0,exact,True,
+ifo_expert_16,Commodities,cmd0531,Synthetic commodities indicator #531,Commodities,1.0,exact,True,
+ifo_expert_17,Surveys,srv0295,Synthetic surveys indicator #295,Surveys,1.0,exact,True,
+ifo_expert_18,Orders,ord0356,Synthetic orders indicator #356,Orders,0.0,exact,True,
+ifo_expert_19,Surveys,srv0290,Synthetic surveys indicator #290,Surveys,0.0,exact,True,
+ifo_expert_20,Surveys,srv0180,Synthetic surveys indicator #180,Surveys,0.0,exact,True,
+gdp_target,Target,(target),German GDP (QoQ growth),Target,,exact,False,"target series, excluded from predictor set"
