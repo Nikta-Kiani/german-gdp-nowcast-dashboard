@@ -54,3 +54,22 @@ python scripts/generate_demo_data.py
 This rebuilds `data/demo/` from a seeded random-number generator — no real
 data required. See [`docs/DATA.md`](../docs/DATA.md) for why the real results
 aren't in this repository.
+
+## Staging real data locally
+
+If you have your own copy of the research pipeline's `Project_files/`
+directory, this pulls the exact files above into `data/real/` (gitignored):
+
+```bash
+python scripts/stage_real_data.py --source /path/to/Project_files
+```
+
+## Deploying with real data (without committing it anywhere public)
+
+`src/dashboard/bootstrap.py` can sync `data/real/` at process startup from a
+*separate, private, data-only* GitHub repo, authenticated with a
+fine-grained, read-only token supplied via Streamlit secrets — see
+[`.streamlit/secrets.toml.example`](../.streamlit/secrets.toml.example). The
+real data and its access token never touch this codebase; only the
+deployment's own secrets store sees them. No secrets configured → no-op →
+demo mode, exactly like a plain `git clone`.

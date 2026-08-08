@@ -23,10 +23,19 @@ active).
 
 The real analysis is deployed separately, with real outputs kept out of any
 public repository — see the **Live demo** link in the main
-[README](../README.md). If you have your own copy of the real output
-artefacts, drop them into `data/real/` (gitignored) or point
-`DASHBOARD_DATA_DIR` at their location; see [`data/README.md`](../data/README.md)
-for the exact expected layout.
+[README](../README.md). That deployment pulls `data/real/` at startup from
+a *separate, private, data-only* GitHub repo via a fine-grained, read-only
+token in Streamlit secrets (see
+[`src/dashboard/bootstrap.py`](../src/dashboard/bootstrap.py)) — the real
+data and its access token never enter this codebase or its git history,
+regardless of whether this repo is public or private.
+
+If you have your own copy of the real output artefacts, stage them locally
+with `python scripts/stage_real_data.py --source /path/to/Project_files`
+(drops files into the gitignored `data/real/`), or point
+`DASHBOARD_DATA_DIR` at their location; see
+[`data/README.md`](../data/README.md) for the exact expected layout and the
+deployment mechanism.
 
 ## Reproducing the underlying research
 

@@ -18,6 +18,10 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
+from dashboard.bootstrap import sync_real_data  # noqa: E402
+
+sync_real_data()  # no-op unless a private data source is set in st.secrets
+
 from dashboard import config as C  # noqa: E402
 from dashboard import data as D  # noqa: E402
 from dashboard import theme as T  # noqa: E402
