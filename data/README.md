@@ -29,9 +29,11 @@ The dashboard resolves its data directory in this order (see
     ├── horizon_bias_variance_table.csv
     ├── post_covid_benchmarks_table.csv
     ├── diebold_mariano_table_all_models.csv
+    ├── model_confidence_set_table.csv
     ├── mincer_zarnowitz_table.csv
     ├── sv_interval_calibration_table.csv
     ├── dfm_en_forecast_revision.csv
+    ├── release_block_counterfactual_states.csv
     ├── factor_loading_m3_panel.csv
     ├── xgb_shap_importance.csv
     ├── nowcast_results_*.csv          # one file per model, see config.py MODELS
@@ -57,11 +59,11 @@ aren't in this repository.
 
 ## Staging real data locally
 
-If you have your own copy of the research pipeline's `Project_files/`
-directory, this pulls the exact files above into `data/real/` (gitignored):
+Point the staging script at the research pipeline root containing `outputs/`
+and `data/metadata/`:
 
 ```bash
-python scripts/stage_real_data.py --source /path/to/Project_files
+python scripts/stage_real_data.py --source /path/to/pipeline-root
 ```
 
 ## Deploying with real data (without committing it anywhere public)

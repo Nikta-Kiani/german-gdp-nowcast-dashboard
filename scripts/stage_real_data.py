@@ -9,12 +9,11 @@ gitignored, and the source directory lives outside this repo entirely.
 
 Usage
 -----
-    python scripts/stage_real_data.py --source /path/to/Project_files
+    python scripts/stage_real_data.py --source /path/to/pipeline-root
 
-``--source`` should point at the ``Project_files`` directory of the
-german-gdp-nowcasting pipeline (the one containing ``outputs/`` and
-``data/metadata/``). Defaults to the ``SOURCE_ROOT`` environment variable if
-``--source`` is omitted.
+``--source`` should point at the research pipeline root containing ``outputs/``
+and ``data/metadata/``. Defaults to the ``SOURCE_ROOT`` environment variable
+if ``--source`` is omitted.
 """
 
 from __future__ import annotations
@@ -27,7 +26,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEST = REPO_ROOT / "data" / "real"
 
-# (relative source path under Project_files, relative dest path under data/real/)
+# (relative source path under the pipeline root, relative path under data/real/)
 FILES = [
     ("data/metadata/data_dict_enriched.csv", "metadata/data_dict.csv"),
     ("outputs/indicator_selection/gdp_target.csv", "indicator_selection/gdp_target.csv"),
@@ -51,6 +50,10 @@ FILES = [
     (
         "outputs/nowcasting/diebold_mariano_table_all_models.csv",
         "nowcasting/diebold_mariano_table_all_models.csv",
+    ),
+    (
+        "outputs/nowcasting/model_confidence_set_table.csv",
+        "nowcasting/model_confidence_set_table.csv",
     ),
     (
         "outputs/nowcasting/category_contribs_en_2017_2025.parquet",
@@ -86,6 +89,10 @@ FILES = [
     ("outputs/nowcasting/mincer_zarnowitz_table.csv", "nowcasting/mincer_zarnowitz_table.csv"),
     ("outputs/nowcasting/sv_interval_calibration_table.csv", "nowcasting/sv_interval_calibration_table.csv"),
     ("outputs/nowcasting/dfm_en_forecast_revision.csv", "nowcasting/dfm_en_forecast_revision.csv"),
+    (
+        "outputs/nowcasting/release_block_counterfactual_states.csv",
+        "nowcasting/release_block_counterfactual_states.csv",
+    ),
     (
         "outputs/nowcasting/_scratch/xgb_sensitivity_summary.csv",
         "nowcasting/_scratch/xgb_sensitivity_summary.csv",
@@ -123,7 +130,7 @@ def main() -> int:
         "--source",
         type=Path,
         default=None,
-        help="Path to the research pipeline's Project_files directory.",
+        help="Path to the research pipeline root.",
     )
     parser.add_argument(
         "--dest",
@@ -141,7 +148,7 @@ def main() -> int:
         if env_source:
             source = Path(env_source)
     if source is None:
-        parser.error("Pass --source /path/to/Project_files or set SOURCE_ROOT.")
+        parser.error("Pass --source /path/to/pipeline-root or set SOURCE_ROOT.")
     source = source.expanduser().resolve()
 
     missing: list[str] = []
