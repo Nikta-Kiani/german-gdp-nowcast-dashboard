@@ -30,9 +30,11 @@ def artifact_mtime() -> float:
         C.HORIZON_PROFILE_CSV,
         C.POST_COVID_CSV,
         C.DM_ALL_CSV,
+        C.MCS_CSV,
         C.MZ_CSV,
         C.SV_CALIBRATION_CSV,
         C.REVISION_CSV,
+        C.RELEASE_BLOCK_STATES_CSV,
         C.CONTRIB_PARQUET,
         C.SERIES_CONTRIB_PARQUET,
         C.CONTRIB_PARQUET_TVP,
@@ -129,18 +131,14 @@ def m3_slice(df: pd.DataFrame, has_miq: bool) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def available_models() -> list[str]:
-    """Headline Part II models (excludes appendix-only comparison specs)."""
-    return [
-        k for k in C.MODEL_ORDER
-        if C.MODELS[k].file.exists()
-        and k not in C.APPENDIX_COMPARE_MODELS
-    ]
+    """Headline Part II models with a saved nowcast path."""
+    return [k for k in C.MODEL_ORDER if C.MODELS[k].file.exists()]
 
 
 @st.cache_data(show_spinner=False)
 def accuracy_models() -> list[str]:
-    """Models shown on Accuracy & model paths (includes appendix comparisons)."""
-    return [k for k in C.MODEL_ORDER if C.MODELS[k].file.exists()]
+    """Models shown on Accuracy & model paths."""
+    return available_models()
 
 
 @st.cache_data(show_spinner=False)
@@ -224,9 +222,97 @@ def load_rmsfe_table() -> pd.DataFrame:
     return pd.read_csv(C.RMSFE_ALL_CSV)
 
 
+def _horizon_profile_from_path(key: str) -> pd.DataFrame:
+    """Build the M1–M3 RMSFE profile for one model from its saved nowcast path.
+
+    Used when a DFM variant is missing from the pre-aggregated
+    ``horizon_profile_table.csv`` (historically DFM-PLS). Rounding matches
+    the four-decimal convention of that table.
+    """
+    df = load_nowcast(key)
+    empty = pd.DataFrame(columns=["model", "regime", "month_in_quarter", "RMSFE"])
+    if df is None or "month_in_quarter" not in df.columns:
+        return empty
+    rows = []
+    for regime, (q0, q1) in C.REGIMES.items():
+        for m in (1, 2, 3):
+            err = df.loc[
+                (df["quarter"] >= q0)
+                & (df["quarter"] <= q1)
+                & (df["month_in_quarter"] == m),
+                "error",
+            ].dropna()
+            rmsfe = (
+                float(np.sqrt(np.mean(err.to_numpy() ** 2))) if len(err) else np.nan
+            )
+            rows.append({
+                "model": key,
+                "regime": regime,
+                "month_in_quarter": m,
+                "RMSFE": round(rmsfe, 4),
+            })
+    return pd.DataFrame(rows)
+
+
+def _horizon_bias_variance_from_path(key: str) -> pd.DataFrame:
+    """Build the M1–M3 squared-error decomposition for one saved model path."""
+    df = load_nowcast(key)
+    columns = [
+        "model", "regime", "month_in_quarter", "n", "bias", "bias_sq",
+        "variance", "RMSFE", "bias_sq_share_pct",
+    ]
+    if df is None or "month_in_quarter" not in df.columns:
+        return pd.DataFrame(columns=columns)
+    rows = []
+    for regime, (q0, q1) in C.REGIMES.items():
+        for month in (1, 2, 3):
+            err = pd.to_numeric(
+                df.loc[
+                    (df["quarter"] >= q0)
+                    & (df["quarter"] <= q1)
+                    & (df["month_in_quarter"] == month),
+                    "error",
+                ],
+                errors="coerce",
+            ).dropna()
+            if err.empty:
+                continue
+            bias = float(err.mean())
+            bias_sq = bias ** 2
+            variance = float(np.mean((err - bias) ** 2))
+            rmsfe = float(np.sqrt(np.mean(err ** 2)))
+            rows.append({
+                "model": key,
+                "regime": regime,
+                "month_in_quarter": f"M{month}",
+                "n": int(len(err)),
+                "bias": round(bias, 4),
+                "bias_sq": round(bias_sq, 4),
+                "variance": round(variance, 4),
+                "RMSFE": round(rmsfe, 4),
+                "bias_sq_share_pct": (
+                    round(100 * bias_sq / rmsfe ** 2, 2) if rmsfe else np.nan
+                ),
+            })
+    return pd.DataFrame(rows, columns=columns)
+
+
 @st.cache_data(show_spinner=False)
 def load_horizon_profile() -> pd.DataFrame:
-    return pd.read_csv(C.HORIZON_PROFILE_CSV)
+    df = pd.read_csv(C.HORIZON_PROFILE_CSV)
+    # The canonical table predates DFM-PLS's promotion into the headline
+    # horse race; fill any missing DFM path from the saved nowcast file.
+    missing = [
+        key for key in ("DFM-PLS",)
+        if key not in set(df["model"]) and C.MODELS[key].file.exists()
+    ]
+    if missing:
+        extra = pd.concat(
+            [_horizon_profile_from_path(key) for key in missing],
+            ignore_index=True,
+        )
+        df = pd.concat([df, extra], ignore_index=True)
+    return df
 
 
 @st.cache_data(show_spinner=False)
@@ -234,12 +320,39 @@ def load_horizon_bias_variance() -> pd.DataFrame:
     """Bias^2 / variance decomposition of the M1-M3 RMSFE, per model x regime."""
     if not C.HORIZON_BIAS_VARIANCE_CSV.exists():
         return pd.DataFrame()
-    return pd.read_csv(C.HORIZON_BIAS_VARIANCE_CSV)
+    df = pd.read_csv(C.HORIZON_BIAS_VARIANCE_CSV)
+    missing = [
+        key for key in ("DFM-PLS",)
+        if key not in set(df["model"]) and C.MODELS[key].file.exists()
+    ]
+    if missing:
+        extra = pd.concat(
+            [_horizon_bias_variance_from_path(key) for key in missing],
+            ignore_index=True,
+        )
+        df = pd.concat([df, extra], ignore_index=True)
+    return df
 
 
 @st.cache_data(show_spinner=False)
 def load_post_covid() -> pd.DataFrame:
     return pd.read_csv(C.POST_COVID_CSV)
+
+
+@st.cache_data(show_spinner=False)
+def load_release_block_states() -> pd.DataFrame:
+    """M2/M3 RMSFE under the four post-COVID release-block information sets."""
+    if not C.RELEASE_BLOCK_STATES_CSV.exists():
+        return pd.DataFrame()
+    return pd.read_csv(C.RELEASE_BLOCK_STATES_CSV)
+
+
+@st.cache_data(show_spinner=False)
+def load_model_confidence_set() -> pd.DataFrame:
+    """Full-sample 90% model confidence set for squared M3 loss."""
+    if not C.MCS_CSV.exists():
+        return pd.DataFrame()
+    return pd.read_csv(C.MCS_CSV)
 
 
 @st.cache_data(show_spinner=False)
@@ -307,6 +420,44 @@ def load_sv_calibration() -> pd.DataFrame:
     if not C.SV_CALIBRATION_CSV.exists():
         return pd.DataFrame()
     return pd.read_csv(C.SV_CALIBRATION_CSV)
+
+
+@st.cache_data(show_spinner=False)
+def sv_calibration_by_regime() -> pd.DataFrame:
+    """Compute DFM-SV M3 interval coverage and width within each fixed regime."""
+    df = load_nowcast("DFM-SV-k2")
+    columns = ["regime", "n", "covered", "misses", "coverage", "mean_width"]
+    required = {
+        "quarter", "month_in_quarter", "actual", "ci_lower_90", "ci_upper_90",
+    }
+    if df is None or not required.issubset(df.columns):
+        return pd.DataFrame(columns=columns)
+
+    m3 = df.loc[df["month_in_quarter"] == HEADLINE_MIQ].copy()
+    m3["quarter_p"] = pd.PeriodIndex(m3["quarter"].astype(str), freq="Q")
+    rows = []
+    for regime, (start, end) in C.REGIMES.items():
+        sub = m3.loc[
+            (m3["quarter_p"] >= pd.Period(start, freq="Q"))
+            & (m3["quarter_p"] <= pd.Period(end, freq="Q"))
+        ]
+        if sub.empty:
+            continue
+        hit = (
+            (sub["actual"] >= sub["ci_lower_90"])
+            & (sub["actual"] <= sub["ci_upper_90"])
+        )
+        rows.append({
+            "regime": regime,
+            "n": int(len(sub)),
+            "covered": int(hit.sum()),
+            "misses": int((~hit).sum()),
+            "coverage": float(hit.mean()),
+            "mean_width": float(
+                (sub["ci_upper_90"] - sub["ci_lower_90"]).mean()
+            ),
+        })
+    return pd.DataFrame(rows, columns=columns)
 
 
 @st.cache_data(show_spinner=False)
@@ -517,6 +668,29 @@ def ifocast_membership() -> list[str]:
     ids = pred["my_id"].astype(str)
     ids = ids[~ids.isin(["nan", ""])]
     return list(dict.fromkeys(ids))  # order-preserving unique
+
+
+@st.cache_data(show_spinner=False)
+def en_stability_summary() -> dict[str, float | int]:
+    """EN persistence and mean per-origin overlap with the fixed ifoCAST set."""
+    mat = load_selection_matrix("EN (raw)")
+    if mat is None or mat.empty:
+        return {}
+    selected = mat.fillna(0).gt(0)
+    ifo = set(ifocast_membership())
+    overlaps = []
+    if ifo:
+        for _, row in selected.iterrows():
+            en_set = set(row.index[row])
+            union = en_set | ifo
+            overlaps.append(len(en_set & ifo) / len(union) if union else np.nan)
+    return {
+        "persistent_series": int(selected.all(axis=0).sum()),
+        "mean_ifocast_jaccard": (
+            float(np.nanmean(overlaps)) if overlaps else np.nan
+        ),
+        "n_ifocast": len(ifo),
+    }
 
 
 def _method_series_weights(method: str) -> pd.Series:

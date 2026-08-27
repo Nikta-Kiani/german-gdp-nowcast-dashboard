@@ -3,7 +3,7 @@
 Run with:
     streamlit run app.py
 
-A guided, two-part tour built on top of a master's thesis on real-time German
+A guided, two-part tour built on top of a master's thesis on pseudo-real-time German
 GDP nowcasting: Part I (indicator selection) and Part II (nowcasting results),
 preceded by an overview. See ``src/dashboard/config.py`` for how the data
 directory (real vs. bundled demo sample) is resolved.
@@ -56,8 +56,8 @@ with st.sidebar:
     st.markdown("<hr/>", unsafe_allow_html=True)
     st.markdown(
         f"<div style='color:{C.SUBTLE};font-size:0.78rem;line-height:1.5'>"
-        "Real-time expanding window<br>1991m01 → 2025m12<br>"
-        "Evaluation: 2011Q1–2025Q4</div>",
+        "Pseudo-real-time expanding window<br>1991m01 → 2025m12<br>"
+        "First-release GDP · 2011Q1–2025Q4</div>",
         unsafe_allow_html=True,
     )
     if C.IS_DEMO_DATA:

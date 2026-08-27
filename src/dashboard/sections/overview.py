@@ -11,52 +11,48 @@ from .. import theme as T
 def render() -> None:
     T.hero(
         "Nowcasting & Indicator Selection in a Data-Rich Environment",
-        "An application to German GDP growth — real-time indicator screening "
-        "and short-horizon nowcasting over 2011–2025.",
-        eyebrow="M.Sc. Thesis · Statistics & Econometrics",
+        "Indicator selection and pseudo-real-time nowcasting, evaluated on "
+        "first-release GDP growth from 2011Q1 to 2025Q4.",
+        eyebrow="M.Sc. Thesis · Statistics & Data Science",
     )
 
     T.stat_cards([
         ("585", "candidate indicators"),
-        ("11", "economic categories"),
-        ("1991–2025", "monthly sample"),
-        ("180", "real-time origins"),
-        ("9", "nowcasting models"),
+        ("180", "monthly origins"),
+        ("60", "evaluation quarters"),
+        ("11", "headline candidates"),
+        ("3", "calendar-defined regimes"),
     ])
 
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        T.eyebrow("Part I")
-        st.markdown("### Indicator selection")
+    T.eyebrow("What the thesis finds")
+    st.markdown("### Three results organise the dashboard")
+    findings = st.columns(3, gap="large")
+    with findings[0]:
+        st.markdown("**Selection agrees on categories, not series**")
         st.markdown(
-            "A real-time, expanding-window screen of a high-dimensional German "
-            "macro panel. Indicators are re-selected at every origin from "
-            "**2011m01** onward, on predictors aggregated to quarterly "
-            "frequency.\n\n"
-            "- **Elastic Net** — primary data-driven screen\n"
-            "- **Block-balanced (k=20)** — EN with structural breadth (≥1 per category)\n"
-            "- **PLS** — supervised dimensionality reduction (Part I comparison only)\n"
-            "- Cross-checked against **XGBoost (SHAP)** importances"
+            "All four statistical signals favour delayed hard-activity data, "
+            "but their series-level rank correlations remain below **0.5**."
         )
-    with col2:
-        T.eyebrow("Part II")
-        st.markdown("### Nowcasting")
+    with findings[1]:
+        st.markdown("**Performance changes with the regime**")
         st.markdown(
-            "The selected indicators feed a focused suite of nowcasting models, "
-            "evaluated out-of-sample at the final (M3) information set across "
-            "three economic regimes. The headline DFM models keep the monthly "
-            "panel in mixed frequency (Mariano–Murasawa encoding) after "
-            "publication-lag masking and AR ragged-edge fill; XGBoost "
-            "additionally aggregates indicators to quarterly frequency before "
-            "fitting, and MLP-Factor reuses the DFM's mixed-frequency factors.\n\n"
-            "- **DFM (A-CD-TPN)** on EN, ifoCAST fixed set, and block-balanced inputs\n"
-            "- **DFM-SV (integrated, k=2)** — same EN inputs, with stochastic "
-            "volatility fed back into the Kalman smoother, so the point nowcast "
-            "can differ slightly from DFM-EN while intervals stay calibrated\n"
-            "- **Equal-weight combination** of the main DFM variants\n"
-            "- **XGBoost** and a **factor-augmented MLP** as ML benchmarks\n"
-            "- Classical **AR(1)** and **Random-Walk** baselines"
+            "Monthly factor models contain the COVID swings better than quarterly "
+            "AR benchmarks. After 2022, short-memory and adaptive forecasts lead "
+            "in point estimates."
         )
+    with findings[2]:
+        st.markdown("**The sample does not identify a champion**")
+        st.markdown(
+            "The equal-weight DFM combination has the lowest full-sample RMSFE, "
+            "but the 90% model confidence set retains all eleven candidates."
+        )
+
+    T.callout(
+        "<b>Scope.</b> This is a pseudo-real-time exercise: publication lags and "
+        "first-release GDP are respected, but historical predictor revisions are "
+        "not reconstructed. Rankings are point estimates unless a statistical "
+        "test is stated."
+    )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
 
@@ -70,8 +66,8 @@ def render() -> None:
          "The pandemic shock window (8 quarters); squared-error metrics are "
          "dominated by a few extreme misses."),
         ("post-COVID", "2022Q1 – 2025Q4",
-         "The post-pandemic window (16 quarters), spanning the inflation and "
-         "normalisation phase."),
+         "The low-growth post-2022 window (16 quarters); estimates remain "
+         "sensitive to a few observations."),
     ]
     for c, (name, span, desc) in zip(rc, regimes):
         with c:
@@ -85,18 +81,13 @@ def render() -> None:
 
     st.markdown("<hr/>", unsafe_allow_html=True)
     T.eyebrow("Methodology at a glance")
-    st.markdown("### The end-to-end pipeline")
+    st.markdown("### One protocol, two linked questions")
     st.markdown(
-        "The thesis follows two linked pipelines. Part I screens the 585-series "
-        "panel at 180 expanding-window origins and outputs time-varying "
-        "indicator sets; Part II turns those sets into real-time GDP nowcasts "
-        "on the same evaluation grid. Part I aggregates predictors to quarterly "
-        "frequency via a raw-level bridge (back-transform to raw monthly levels, "
-        "quarterly mean, re-transform to growth rates). Part II keeps the monthly "
-        "panel and embeds it in a mixed-frequency state space (Mariano–Murasawa "
-        "encoding), with publication-lag masking and AR ragged-edge fill "
-        "enforcing the information set available at each origin. Expand either "
-        "diagram below for the full sequence."
+        "Part I asks which indicators are associated with **completed-quarter** "
+        "growth. Part II asks how those inputs perform when releases arrive in "
+        "real time. Selection is refreshed when a completed quarter enters the "
+        "training sample; within a target quarter, the indicator list stays fixed "
+        "while the available information grows from M1 to M3."
     )
     fc1, fc2 = st.columns(2, gap="large")
     with fc1:
@@ -113,8 +104,7 @@ def render() -> None:
         T.nowcast_flow()
 
     T.callout(
-        "Use the sidebar to move through the workflow in order: "
-        "<b>Part I — Indicator selection</b> shows <i>what</i> the data tells us "
-        "to watch; <b>Part II — Nowcasting</b> shows <i>how well</i> those "
-        "indicators translate into GDP nowcasts."
+        "Use <b>Part I</b> for selection composition and agreement. Use "
+        "<b>Part II</b> for accuracy, information accrual, formal tests, "
+        "uncertainty and fitted-model interpretation."
     )

@@ -24,17 +24,15 @@ def render() -> None:
     T.eyebrow("Part I")
     st.markdown("# Indicator selection")
     st.markdown(
-        "Four time-varying selection signals and one fixed expert benchmark are "
-        "compared on a common footing: **Elastic Net**, **block-balanced EN**, "
-        "**PLS**, **XGBoost** mean&nbsp;|SHAP| and **ifoCAST**. Each native signal "
-        "is converted to per-series importance mass and aggregated to economic "
-        "categories."
+        "Four statistical signals are compared with a fixed 19-series ifoCAST "
+        "reference. The methods estimate different objects, so the common "
+        "comparison is their share of importance mass by economic category."
     )
     tab1, tab2, tab3, tab4 = st.tabs([
-        "Emphasis over time",
-        "Regime shifts",
-        "Method agreement",
-        "Ragged edge & timeliness",
+        "Composition over time",
+        "Regime averages",
+        "Agreement",
+        "Timing & ragged edge",
     ])
 
     with tab1:
@@ -74,19 +72,28 @@ def _structural_shift() -> None:
             title=f"{method} — soft vs hard data emphasis over time"),
         width='stretch')
     T.callout(
-        "Solid lines show the share of the method's selected mass in <b>soft "
-        "survey data</b> vs <b>hard real-activity data</b> (Orders, Turnover, "
-        "Production, Construction, Trade). Dotted lines mark each block's share "
-        "of the candidate universe. A solid line above its dotted line indicates "
-        "over-selection relative to availability."
+        "<b>Thesis finding.</b> Every statistical method puts most of its mass "
+        "on delayed hard activity: 65–100% across methods and regimes, versus "
+        "29.1% of the candidate panel. This is completed-quarter predictive "
+        "association, not a claim that surveys are unhelpful early in a quarter."
     )
+
+    with st.expander("Why the universe base rate matters"):
+        st.plotly_chart(
+            charts.universe_bar(D.universe_category_share()),
+            width="stretch",
+        )
+        st.caption(
+            "Surveys are 66.8% of the 585-series universe. Selection shares "
+            "must therefore be read relative to what was available to select."
+        )
 
     with st.expander("Full 11-category composition (stacked area)"):
         st.plotly_chart(charts.structural_shift_area(share), width='stretch')
         st.caption(
             "Raw composition of the selected set (bands sum to 100%). The wide "
-            "rose band mainly reflects that Surveys are about two-thirds of the "
-            "universe — the soft/hard chart above nets that base rate out."
+            "survey band partly reflects the survey-heavy universe; use the "
+            "base-rate lines above before interpreting category emphasis."
         )
 
     with st.expander("Non-linear cross-check: XGBoost"):
@@ -110,10 +117,10 @@ def _structural_shift() -> None:
 def _regime_switching() -> None:
     st.markdown("### Regime-level category emphasis")
     T.callout(
-        "Does selection emphasis change between pre-COVID, COVID and post-COVID "
-        "windows? The headline chart condenses the answer to the decision that "
-        "matters for nowcasting: how strongly each method rotates toward "
-        "<b>hard real-activity data</b> in each regime."
+        "Regime averages summarise composition; they do not establish a break. "
+        "The hard-data concentration is stable, while the apparent COVID "
+        "rotation toward surveys is brief within EN and is not reproduced by "
+        "the other methods."
     )
     long = D.regime_soft_hard()
     if long.empty:
@@ -124,10 +131,9 @@ def _regime_switching() -> None:
             width='stretch',
         )
         T.callout(
-            "Hard real-activity categories are over-weighted relative to the "
-            "survey-dominated panel in every regime shown. The magnitude and "
-            "direction of regime-to-regime shifts differ by method — compare "
-            "the bars across panels and against the dotted availability lines."
+            "Compare levels with the dotted universe shares and movements across "
+            "panels separately. The shared result is the hard-data level; the "
+            "regime-to-regime movement is method-dependent."
         )
 
     st.markdown("#### Full category composition by regime")
@@ -149,47 +155,37 @@ def _regime_switching() -> None:
 # --------------------------------------------------------------------------- #
 def _consensus() -> None:
     st.markdown("### Method agreement diagnostics")
-    n_ifo = len(D.ifocast_membership())
-    ifo_note = (
-        f" Includes <b>ifoCAST (fixed)</b> — {n_ifo} supervisor-confirmed "
-        "predictors from the latest mapping table (live, not the static "
-        "selcmp_task2 CSV)."
-        if n_ifo
-        else ""
-    )
+    summary = D.en_stability_summary()
+    if summary:
+        T.stat_cards([
+            (f"{summary['persistent_series']}", "EN series selected at every origin"),
+            (f"{summary['mean_ifocast_jaccard']:.3f}", "mean EN–ifoCAST Jaccard"),
+            (f"{summary['n_ifocast']}", "active ifoCAST predictors"),
+        ])
+
+    df = D.cross_method_agreement()
+    st.plotly_chart(
+        charts.agreement_heatmap(
+            df, "Cross-method agreement — Spearman rank correlation",
+            "Spearman ρ"),
+        width='stretch')
     T.callout(
-        "Both heatmaps are computed on the fly from the current selection "
-        "artefacts and "
-        f"<code>ifocast_indicator_mapping.csv</code>.{ifo_note}"
+        "<b>Thesis finding.</b> Data-driven rank correlations remain below 0.5, "
+        "and correlations with the fixed ifoCAST set are lower still (0.14–0.23). "
+        "Methods agree on the hard-activity block, not on a universal series list."
     )
-    metric = st.radio(
-        "Agreement metric",
-        ["Jaccard overlap (top-20 sets)", "Spearman ρ (whole universe)"],
-        horizontal=True, label_visibility="collapsed",
-    )
-    if metric.startswith("Jaccard"):
-        df = D.method_overlap_jaccard(top_n=20)
+
+    with st.expander("Exploratory top-20 overlap"):
+        jaccard = D.method_overlap_jaccard(top_n=20)
         st.plotly_chart(
             charts.agreement_heatmap(
-                df, "Cross-method agreement — Jaccard overlap of top-20 indicators",
+                jaccard,
+                "Exploratory Jaccard overlap of aggregate top-20 indicators",
                 "Jaccard"),
             width='stretch')
-        T.callout(
-            "Jaccard = shared ÷ union of each pair's <b>top-20</b> indicators. This "
-            "is the most concrete agreement diagnostic because it asks whether methods "
-            "select the same high-priority series, not only similar category masses."
-        )
-    else:
-        df = D.cross_method_agreement()
-        st.plotly_chart(
-            charts.agreement_heatmap(
-                df, "Cross-method agreement — Spearman rank correlation",
-                "Spearman ρ"),
-            width='stretch')
-        T.callout(
-            "<b>Spearman ρ</b> ranks the full 585-series universe, with zero mass for "
-            "series a method does not use. Treat it as a broad similarity measure; the "
-            "top-20 Jaccard view is more interpretable for specific indicator overlap."
+        st.caption(
+            "This dashboard-only diagnostic compares aggregate top-20 lists. "
+            "It is not the thesis' mean per-origin EN–ifoCAST Jaccard statistic."
         )
 
 
@@ -197,7 +193,7 @@ def _consensus() -> None:
 # Tab 4 — ragged edge
 # --------------------------------------------------------------------------- #
 def _ragged_edge() -> None:
-    st.markdown("### Availability is not the same as informativeness")
+    st.markdown("### Timing and predictive content answer different questions")
     df = D.load_ragged_edge()
     if df.empty:
         st.warning("Ragged-edge diagnostics unavailable.")
@@ -219,11 +215,10 @@ def _ragged_edge() -> None:
         st.plotly_chart(charts.publag_composition(mat), width='stretch')
 
     T.callout(
-        "At any forecast origin the panel has a <b>ragged edge</b>: timely (lag-0) "
-        "series — overwhelmingly <b>surveys</b> — are already published, while hard "
-        "real-activity series (Production, Orders, Turnover) arrive one to two months "
-        "late and must be model-filled. A soft-data tilt in raw shares can therefore "
-        "reflect <i>what is available in real time</i> rather than a judgement that "
-        "surveys are more informative (Bańbura &amp; Rünstler 2011; Giannone, "
-        "Reichlin &amp; Small 2008)."
+        "Part I scores association with <b>completed-quarter</b> growth and does "
+        "not reward early publication; XGBoost–SHAP is the exception because it "
+        "is recorded inside the real-time nowcast loop. Part II masks unreleased "
+        "values and fills the edge using univariate AR models estimated only on "
+        "released history. Timely surveys and delayed hard data are therefore "
+        "complements, not substitutes."
     )

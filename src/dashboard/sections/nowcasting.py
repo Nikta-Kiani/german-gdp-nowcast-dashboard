@@ -18,13 +18,14 @@ def render() -> None:
         "All models are evaluated out-of-sample on first-release German GDP "
         "growth at the **final (M3) information set** of each quarter, over "
         "2011Q1–2025Q4. Accuracy is summarised by the root mean squared forecast "
-        "error (RMSFE, in percentage points)."
+        "error (RMSFE, in percentage points). Publication lags are enforced, but "
+        "historical predictor revisions are not reconstructed."
     )
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "Accuracy & model paths",
         "Within-quarter accrual",
-        "Benchmark horse-race",
+        "Benchmarks",
         "Interpretation & decomposition",
         "Significance & calibration",
         "Model specifications",
@@ -46,6 +47,8 @@ def render() -> None:
 def _accuracy_and_paths() -> None:
     rmsfe = D.rmsfe_by_regime()
     avail = D.accuracy_models()
+    full_acc = D.full_window_accuracy()
+    full_window_order = full_acc["model"].tolist()
 
     st.markdown("### Predictive accuracy by economic regime")
     regimes = st.multiselect(
@@ -58,7 +61,9 @@ def _accuracy_and_paths() -> None:
     )
     if regimes and models_acc:
         st.plotly_chart(
-            charts.rmsfe_regime_bars(rmsfe, models_acc, regimes),
+            charts.rmsfe_regime_bars(
+                rmsfe, models_acc, regimes, full_window_order,
+            ),
             width='stretch',
         )
     T.callout(
@@ -111,7 +116,6 @@ def _accuracy_and_paths() -> None:
         "over-prediction of growth).</div>",
         unsafe_allow_html=True,
     )
-    full_acc = D.full_window_accuracy()
     if not full_acc.empty:
         rows = [
             {
@@ -147,11 +151,10 @@ def _horizon() -> None:
         st.plotly_chart(charts.horizon_profile(df, picked, regime),
                         width='stretch')
     T.callout(
-        "Within-quarter accrual does not improve accuracy uniformly across "
-        "regimes. In <b>pre-COVID</b> and <b>COVID</b>, most DFM variants show "
-        "RMSFE falling from M1 to M3; in <b>post-COVID</b>, several DFM models "
-        "record higher M3 than M1 RMSFE — inspect the selected models in the "
-        "chart above."
+        "Within-quarter information helps before COVID and is decisive during "
+        "COVID. After 2022, every displayed DFM has a higher average M3 than M1 "
+        "RMSFE. These are window averages over 16 quarters, not evidence that "
+        "every individual release or quarter is harmful."
     )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -171,17 +174,30 @@ def _horizon() -> None:
         st.plotly_chart(charts.bias_variance_decomposition(bv, picked, regime),
                         width='stretch')
         T.callout(
-            "Post-COVID, bias² shrinks towards zero from M1 to M3 for every "
-            "DFM variant — incoming data keeps correcting the AR-anchored "
-            "over-prediction, exactly as expected. But the <b>variance</b> "
-            "component more than doubles over the same window, and it is "
-            "this variance inflation — not the bias — that pushes M3 RMSFE "
-            "above M1. Late-arriving, lag-2 hard-data releases are volatile "
-            "relative to the near-flat post-COVID growth rate, so replacing "
-            "their AR-bridge forecasts (Section on ragged-edge filling) with "
-            "the true releases adds noise rather than signal. In "
-            "<b>pre-COVID</b> and <b>COVID</b>, by contrast, variance falls "
-            "sharply from M1 to M3, which is why RMSFE improves there."
+            "After 2022, squared bias falls from M1 to M3 for every displayed "
+            "DFM, but error variance rises by more. The decomposition identifies "
+            "the statistical mechanism; it does not identify which releases "
+            "caused it. Before and during COVID, error variance instead falls "
+            "as the quarter progresses."
+        )
+
+    st.markdown("<hr/>", unsafe_allow_html=True)
+    st.markdown("### Which release block carries the post-2022 change?")
+    block = D.load_release_block_states()
+    if block.empty:
+        st.info("Release-block counterfactual unavailable.")
+    else:
+        st.plotly_chart(
+            charts.release_block_counterfactual(block),
+            width="stretch",
+        )
+        T.callout(
+            "<b>DFM-EN accounting result.</b> Updating the non-hard complement "
+            "alone leaves RMSFE close to the M1-frozen value; allowing hard "
+            "activity to update reproduces nearly all of the observed M2/M3 "
+            "increase. This is a fitted-model counterfactual over 16 quarters, "
+            "not a causal claim. The thesis' bootstrap intervals include zero, "
+            "and three quarters account for much of the M3 increase."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -207,10 +223,11 @@ def _horizon() -> None:
 
 
 def _benchmarks() -> None:
-    st.markdown("### Benchmark horse-race by regime")
+    st.markdown("### Benchmark comparison by regime")
     st.markdown(
         "A focused comparison of the headline models against strong classical "
-        "baselines and the inverse-MSE ensemble, regime by regime."
+        "baselines and the equal-weight DFM combination. Lower bars are point "
+        "estimates, not automatically significant differences."
     )
     df = D.load_post_covid()
     regime_cols = [c for c in df.columns if c.endswith("_rmsfe") and c != "all_rmsfe"]
@@ -229,18 +246,12 @@ def _benchmarks() -> None:
 
 
 def _xgb_sensitivity(post_covid_df) -> None:
-    st.markdown("### Robustness check — how stable is XGB-Full's post-COVID edge?")
+    st.markdown("### Robustness of XGB-Full's post-COVID point estimate")
     st.markdown(
-        "The chart shows **XGB-Full** recording the lowest post-COVID "
-        "RMSFE of any model at its headline configuration (`seed = 42`). Before "
-        "reading that as \"XGBoost wins post-COVID\", the same expanding-window "
-        "nowcast loop was re-run **11 times**: under 5 random seeds (identical "
-        "hyperparameter search, different tie-breaking / tree randomness) and "
-        "6 one-at-a-time hyperparameter perturbations around the tuned values "
-        "(`max_depth`, `learning_rate`, `n_estimators`), plus a **16-fold "
-        "leave-one-quarter-out jackknife** of the headline run and a fresh "
-        "**Diebold–Mariano** test against the strongest naive benchmark, "
-        "Rolling-AR(1) 40q."
+        "The headline seed gives XGB-Full the lowest post-COVID RMSFE among "
+        "non-autoregressive models. The same loop is checked across five seeds, "
+        "six one-at-a-time hyperparameter changes, a leave-one-quarter-out "
+        "jackknife, and a Diebold–Mariano comparison with Rolling-AR(1) 40q."
     )
 
     sens = D.load_xgb_sensitivity()
@@ -254,9 +265,16 @@ def _xgb_sensitivity(post_covid_df) -> None:
         )
         return
 
-    dfm_keys = ["DFM-EN", "DFM-ifoCAST", "DFM-BlockBalanced", "DFM-TVP"]
-    dfm_row = post_covid_df[post_covid_df["model"].isin(dfm_keys)]
-    dfm_vals = dfm_row.set_index("model")["post-COVID_rmsfe"]
+    dfm_keys = [
+        "DFM-EN", "DFM-ifoCAST", "DFM-PLS", "DFM-BlockBalanced",
+        "DFM-TVP", "DFM-SV-k2",
+    ]
+    regime_rmsfe = D.rmsfe_by_regime()
+    dfm_row = regime_rmsfe[
+        regime_rmsfe["model"].isin(dfm_keys)
+        & regime_rmsfe["regime"].eq("post-COVID")
+    ]
+    dfm_vals = dfm_row.set_index("model")["rmsfe"]
     dfm_range = (float(dfm_vals.min()), float(dfm_vals.max()))
     best_dfm = (str(dfm_vals.idxmin()), float(dfm_vals.min()))
     ar1_row = post_covid_df[post_covid_df["model"] == "Rolling-AR(1) 40q"]
@@ -296,24 +314,13 @@ def _xgb_sensitivity(post_covid_df) -> None:
             "significant</b>."
         )
     T.callout(
-        "<b>Seed sensitivity is the real story here.</b> With every other "
-        "choice held fixed, one alternative seed (<code>seed = 1</code>) pushes "
-        "the post-COVID RMSFE from 0.25 pp up to 0.62 pp — worse than every DFM "
-        "variant and close to the worst model on this tab. Hyperparameter "
-        "perturbations are far milder: all 6 stay inside "
-        f"{hp_vals.min():.2f}–{hp_vals.max():.2f} pp, comfortably below the "
-        "DFM range shown as the shaded band. The 16-fold jackknife also stays "
-        "tight (no single quarter drives the headline number), so the result "
-        "is not an artefact of one lucky/unlucky observation."
+        "<b>Cautious reading.</b> Across seeds, post-COVID RMSFE ranges from "
+        f"{seed_vals.min():.2f} to {seed_vals.max():.2f} pp; hyperparameter "
+        f"changes span {hp_vals.min():.2f}–{hp_vals.max():.2f} pp. "
+        "The point estimate is therefore seed-sensitive."
         f"{dm_text} "
-        "<br><br>"
-        "<b>Honest reading:</b> XGB-Full's post-COVID accuracy is "
-        "<i>suggestive, not decisive</i> — it depends materially on the "
-        "specific random seed used for its (already-fixed) hyperparameters, "
-        "and it does not statistically beat a naive rolling AR(1). Treat it as "
-        "one promising non-linear benchmark result among several regime "
-        "comparisons on this page, not as a headline finding that XGBoost "
-        "dominates in the post-COVID regime."
+        "XGB-Full is a useful non-linear benchmark, not a demonstrated "
+        "post-COVID winner."
     )
 
 
@@ -353,16 +360,11 @@ def _decomposition() -> None:
             width="stretch",
         )
         T.callout(
-            "These are <b>structural</b> loadings — they describe what each factor "
-            "<i>is</i>, not how much it moved the nowcast. Category shares can "
-            "spike when very few series are selected at a given origin. "
-            "<b>Factor 2 is a mixed factor:</b> across the full sample, Surveys is its single largest category (≈31% of "
-            "|loading| mass on average) but Turnover (≈26%), Orders (≈22%) and "
-            "Production (≈17%) together still make up roughly two-thirds of its "
-            "loadings — Surveys is only the largest single category in half of "
-            "the M3 origins shown. Read Factor 2 as a secondary, more balanced "
-            "demand/sentiment composite rather than a soft-data-only factor. "
-            "Shaded band: COVID window; dashed line: 2022 stagnation onset."
+            "These are estimated loading shares, not economic effects or "
+            "contributions to a particular nowcast. Factor 1 is mainly hard "
+            "activity. Factor 2 is mixed: surveys are its largest single category "
+            "on average, while production, turnover and orders are larger in "
+            "combination. Factors are identified only up to rotation and sign."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -378,27 +380,24 @@ def _decomposition() -> None:
     else:
         st.plotly_chart(charts.tvp_bridge_loadings(tvp_df), width="stretch")
         T.callout(
-            "Before 2020, <b>λ<sub>1</sub></b> (Factor 1, real activity) carried "
-            "most of the GDP transmission (mean ≈0.22 pre-COVID). The post-2022 "
-            "period shows a weaker but still positive Factor-1 link (mean ≈0.16) "
-            "— consistent with the stagnation regime. <b>λ<sub>2</sub></b> "
-            "(Factor 2, the mixed demand/sentiment factor) hovers near zero on "
-            "average in every regime with comparatively high volatility, so it "
-            "is best read as a conditional, second-order bridge coefficient — "
-            "not a standalone survey effect, since Factor 2 itself is not "
-            "survey-dominated (see Stage 1 above)."
+            "The real-activity coefficient is positive at most origins and is "
+            "lower on average after 2022; the second coefficient changes sign "
+            "and averages near zero. Because Stage 1 is re-estimated recursively, "
+            "read the sequence for broad level and drift—not quarter-to-quarter "
+            "structural change or a standalone survey effect."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-    st.markdown("#### DFM-TVP nowcast decomposition — what moved the forecast?")
+    st.markdown("#### DFM-TVP nowcast decomposition — intercept and remainder")
     st.markdown(
-        "The **DFM-TVP** nowcast is decomposed the same way as DFM-EN below, but "
-        "through the time-varying bridge: `nowcast = intercept + λ₁·f₁ + λ₂·f₂`. "
-        "Each factor's contribution (λ·f) is split across economic categories in "
-        "proportion to that factor's Stage-1 |loadings| — so the bars reflect the "
-        "post-COVID **loading drift** shown above. The grey <b>Baseline</b> bar is "
-        "the bridge intercept, so all bars still sum to the nowcast line.",
-        unsafe_allow_html=True,
+        "The **DFM-TVP** nowcast is `nowcast = intercept + λ₁·f₁ + λ₂·f₂`. "
+        "The upper panel shows that split as levels: realised GDP, the nowcast, "
+        "and the time-varying bridge intercept. The lower panel allocates only "
+        "the remainder (`nowcast − intercept`) across indicator categories, in "
+        "proportion to each factor's Stage-1 |loadings|. This is a descriptive "
+        "allocation of the *fitted nowcast*, not a sequential news decomposition. "
+        "Ifo's public ifoCAST, by contrast, attributes the *change between two "
+        "successive forecasts* to incoming data groups."
     )
     df_tvp = D.load_contributions_tvp()
     if df_tvp.empty:
@@ -419,10 +418,10 @@ def _decomposition() -> None:
         with tc2:
             tvp_view = st.radio(
                 "View", ["Absolute (pp)", "Relative (%)"], horizontal=True,
-                help="Absolute (pp): signed category contributions in percentage "
-                     "points; bars (incl. Baseline) sum to the nowcast and GDP "
-                     "lines are shown. Relative (%): each origin rescaled so "
-                     "upward and downward contributions each sum to ±100 %.",
+                help="Absolute (pp): intercept, nowcast and GDP as levels in the "
+                     "upper panel; lower-panel bars sum to nowcast − intercept. "
+                     "Relative (%): rescales only the factor-driven remainder so "
+                     "upward and downward category shares each sum to ±100 %.",
                 key="tvp_decomp_view",
             )
         tvp_mode = "pct" if tvp_view.startswith("Relative") else "pp"
@@ -432,32 +431,19 @@ def _decomposition() -> None:
             series_parquet=C.SERIES_CONTRIB_PARQUET_TVP,
         )
         st.plotly_chart(
-            charts.contributions_stacked(
+            charts.contributions_tvp_bridge(
                 df_tvp, tvp_start, tvp_end, mode=tvp_mode,
-                origin_hovers=tvp_hovers, model_label="DFM-TVP",
+                origin_hovers=tvp_hovers,
             ),
             width="stretch",
         )
         T.callout(
-            "This is the <b>DFM-TVP</b> counterpart of the DFM-EN decomposition "
-            "below. Because the factor→GDP loadings drift (Stage 2 above), the "
-            "category mix here can differ from DFM-EN even though both use the same "
-            "Elastic-Net indicator set and Stage-1 factors. The grey <b>Baseline "
-            "(intercept)</b> bar captures the level the bridge assigns before any "
-            "factor movement; category bars plus Baseline sum to the black nowcast "
-            "line, the dotted line is realised GDP. Hover any bar for the top "
-            "contributing series within that category. "
-            "<br><br>"
-            "A slate <b>Offset</b> bar appears only in a handful of origins where "
-            "λ₁·f₁ and λ₂·f₂ are individually large but largely cancel — e.g. one "
-            "factor pulling +40 pp while the other pulls −38 pp for a +2 pp "
-            "nowcast. Splitting such a small net effect cleanly across categories "
-            "in proportion to each factor's loadings would produce category bars "
-            "many times the size of the nowcast itself, which is not economically "
-            "meaningful. We therefore cap any single category at 5× the nowcast "
-            "and book the rest as <b>Offset</b> — a transparent flag for \"large, "
-            "mostly self-cancelling factor swings\" rather than an inflated, "
-            "misleading category bar."
+            "The bridge intercept is an estimated forecast level, not an economic "
+            "category. After 2022 it remains near +0.26 pp while realised growth "
+            "averages near +0.03 pp; the TVP gain mainly comes from transmitting "
+            "less factor variation, not fully learning the new level. Lower-panel "
+            "bars allocate only the factor-driven remainder. Offset records "
+            "large cross-category cancellation and keeps the display readable."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -517,47 +503,21 @@ def _decomposition() -> None:
         )
     else:
         T.callout(
-            "<b>What this plot shows:</b> At each monthly forecast origin, the "
-            "DFM-EN nowcast is split into category-level contributions in "
-            "percentage points (pp). This <b>relative</b> view rescales those "
-            "contributions <i>within each origin</i>: all categories pushing the "
-            "nowcast <b>up</b> are re-expressed as shares that sum to "
-            "<b>+100 %</b>; all categories pulling it <b>down</b> sum to "
-            "<b>−100 %</b>. Bar height is therefore a <i>composition</i>, not a "
-            "magnitude — a 40 % Surveys slice means surveys account for 40 % of "
-            "the upward (or downward) push at that date, not that surveys added "
-            "0.40 pp to GDP. "
-            "<br><br>"
-            "<b>How to read it economically:</b> Use this view to ask "
-            "<i>which information blocks are driving the forecast mix?</i> "
-            "Compare bar colours across time: if pink (Surveys) grows in the "
-            "positive stack in calm quarters, timely sentiment is carrying more "
-            "of the upward revision; if yellow/green (Turnover, Production, Orders) "
-            "expand in the negative stack during COVID, hard-activity releases "
-            "are pulling the nowcast down as the contraction becomes visible. "
-            "Because magnitudes are normalised away, this is the right view for "
-            "regime shifts and stress episodes when one category would otherwise "
-            "dominate the absolute (pp) chart. "
-            "<br><br>"
-            "<b>What it is not:</b> This is <i>forecast attribution</i> through "
-            "the DFM — not causal inference and not indicator selection mass "
-            "(see Part I for that). It also does not show the level of the "
-            "nowcast or realised GDP; switch to <b>Absolute (pp)</b> to read "
-            "how large the forecast is and how much each category moved it in "
-            "percentage points. Hover any bar for the top contributing series "
-            "within that category at that origin."
+            "Positive shares sum to +100% and negative shares to −100% at each "
+            "origin. This shows composition, not magnitude: a 40% slice is 40% "
+            "of the same-sign fitted contribution, not 0.40 pp of GDP. It is "
+            "forecast attribution—not causal inference, release news or selection "
+            "mass. Use the absolute view for levels in percentage points."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
     st.markdown("#### DFM-BlockBalanced nowcast decomposition — what moved the forecast?")
     st.markdown(
         "The **DFM-BlockBalanced** (k=20, ≥1 indicator per category) nowcast uses "
-        "the identical fixed-loading DFM and predict()-based attribution as "
-        "DFM-EN above — so there is no intercept/Baseline bar here, unlike the "
-        "DFM-TVP bridge. The difference from DFM-EN is entirely in **which "
-        "indicators are selected**: a parsimonious, category-balanced k=20 set "
-        "rather than the unconstrained, larger EN set. This is the specification "
-        "that is most competitive in the **post-2022 stagnation** regime."
+        "the identical fixed-loading DFM and predicted-level attribution as "
+        "DFM-EN above, so there is no intercept line. The difference from DFM-EN "
+        "is entirely in **which indicators are selected**: a parsimonious, "
+        "category-balanced k=20 set rather than the unconstrained, larger EN set."
     )
     df_bb = D.load_contributions_blockbalanced()
     if df_bb.empty:
@@ -599,90 +559,29 @@ def _decomposition() -> None:
         )
         T.callout(
             "Compare this chart with DFM-EN directly above: same DFM, same "
-            "attribution method, only the input set differs. A more balanced "
-            "category mix here (every block guaranteed ≥1 indicator) tends to "
-            "damp any single category's dominance relative to DFM-EN, which is "
-            "part of why block-balanced selection is more robust once the EN "
-            "set drifts hard-data-heavy in the post-2022 stagnation regime. With "
-            "only k=20 indicators, offsetting predictions concentrate in fewer "
-            "series, so the slate <b>Offset</b> bar described above (5× leverage "
-            "cap) triggers here somewhat more often than for DFM-EN — most "
-            "visibly around the 2020 V-shaped rebound, where some indicators had "
-            "already rebounded while others were still deeply negative. "
-            "Hover any bar for the top contributing series within that category."
+            "attribution method, different input set. Differences in category "
+            "mix therefore show selection sensitivity, not competing explanations "
+            "of the economy. Offset has the same display-only role as above."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-    st.markdown("#### Key economic findings from the decomposition")
+    st.markdown("#### What the three decompositions actually show")
     st.markdown(
-        "The three panels above attribute the *same* economic reality through three "
-        "different lenses — DFM-EN and DFM-BlockBalanced split the nowcast in "
-        "proportion to each indicator's predicted level (ifoCAST-style), while DFM-TVP "
-        "splits it in proportion to each factor's *structural* loadings. Comparing them "
-        "side by side, on the same monthly origins, surfaces findings that a single "
-        "decomposition would hide."
+        "DFM-EN and DFM-BlockBalanced allocate each fitted nowcast in proportion "
+        "to predicted indicator levels. DFM-TVP allocates only the factor-driven "
+        "remainder, in proportion to Stage-1 |loadings| times the drifting bridge. "
+        "None of the three is a sequential news decomposition: Ifo's ifoCAST bars "
+        "explain the revision between two successive forecasts, whereas these "
+        "bars explain a nowcast *level* at one origin. Comparing the three on "
+        "the same months shows how much of the 'story' is the economy, and how "
+        "much is the attribution method and the selected input set."
     )
     T.callout(
-        "<b>1. Surveys dominate calm periods — but only under level-based attribution.</b> "
-        "Pre-COVID, Surveys carry <b>86%</b> of DFM-EN's and <b>79%</b> of "
-        "DFM-BlockBalanced's total attributed magnitude (magnitude-weighted share of "
-        "|contribution| across 2017–2019): timely sentiment data moves more than hard "
-        "data in normal times, and both models attribute by how much each indicator's "
-        "predicted level moves. DFM-TVP tells a different story for the identical "
-        "period: its structural Baseline (bridge intercept) absorbs <b>81%</b> of the "
-        "mass, because pre-COVID growth sits close to trend and the loading-based "
-        "residual splits mainly across Turnover/Production/Orders — hard data, not "
-        "surveys. Which category \"explains\" calm-period growth is therefore as much a "
-        "property of the attribution method as of the economy. "
-        "<br><br>"
-        "<b>2. COVID-19 Q2 2020: the same −10.6&nbsp;pp collapse, three different "
-        "reaction speeds.</b> At the M1 origin (April 2020) all three nowcasts were "
-        "still near zero (+0.36 EN, +0.23 BlockBalanced, +0.33 TVP) — none saw the "
-        "shock a full quarter ahead, before any April survey or hard data had been "
-        "released. By M2 (May), EN had moved to only −1.6&nbsp;pp (Surveys −0.6, "
-        "Turnover −1.1), while BlockBalanced had already swung to −4.9&nbsp;pp, driven "
-        "almost entirely by one selected survey collapsing (−8.2&nbsp;pp gross, partly "
-        "reconciled by the leverage-capped Offset bar) — a direct illustration of how a "
-        "k=20 input set concentrates the impact of a single indicator shock. TVP barely "
-        "moved (+0.31&nbsp;pp): its random-walk factor loadings adjust too slowly to "
-        "react within one month. By M3 (June), once May Turnover data arrived, EN "
-        "reached −8.9&nbsp;pp (Turnover −6.5) and BlockBalanced overshot to "
-        "−14.6&nbsp;pp (Turnover −10.6, past the actual −10.6&nbsp;pp print), while TVP "
-        "reached only −3.6&nbsp;pp (Turnover just −1.5). This ordering — EN closest, "
-        "BlockBalanced overshooting, TVP undershooting — matches the measured COVID "
-        "RMSFE exactly: <b>1.92&nbsp;pp (EN) &lt; 2.13&nbsp;pp (BlockBalanced) &lt; "
-        "3.23&nbsp;pp (TVP)</b>. The COVID-regime bias also flips sign: EN and TVP "
-        "nowcasts average <b>+0.46&nbsp;pp</b> and <b>+1.11&nbsp;pp</b> too high "
-        "(both still short of the crash on average), while BlockBalanced averages "
-        "<b>−0.36&nbsp;pp</b> too low — its concentrated indicator set overshoots the "
-        "downside as much as it misses elsewhere, and the errors net negative. "
-        "<br><br>"
-        "<b>3. Post-2022: which category \"explains\" the stagnation nowcast depends on "
-        "which indicators were selected, not just on the DFM.</b> For DFM-EN, Surveys "
-        "remain the largest block (48% of attributed magnitude, 2022–2025) but a new "
-        "driver appears — <b>Global</b> (17%) — traced almost entirely to a single "
-        "series, the <b>US ISM Services PMI</b>, consistent with Germany's "
-        "export-sector exposure to US demand momentum through the energy-crisis and "
-        "stagnation years. DFM-BlockBalanced shows a similar Surveys share (30%) but a "
-        "<i>different</i> second driver: <b>Financial</b> (31%), traced to the German "
-        "<b>VDAX-NEW volatility index</b> — a domestic risk-sentiment story, not a "
-        "global-trade one — plus a Misc contribution from manufacturing capacity "
-        "utilisation; Global barely registers (well under 5%). DFM-TVP again assigns "
-        "most of the post-2022 mass to its Baseline intercept (61%), reflecting that "
-        "near-zero trend growth is mostly a level shift the bridge absorbs rather than "
-        "a factor-driven movement. Two economically plausible post-2022 narratives — "
-        "external (US) demand sensitivity vs. domestic risk sentiment — are both "
-        "visible in the data, but each surfaces only under one particular indicator-"
-        "selection method, a caution against treating either single decomposition as "
-        "\"the\" explanation. "
-        "<br><br>"
-        "<b>4. Hard data offsets surveys in about a third of months, not most of "
-        "them.</b> Across all 108 DFM-EN monthly origins (2017–2025), the combined "
-        "hard-activity contribution (Turnover + Orders + Production) has the "
-        "<b>opposite sign</b> from the Surveys contribution in <b>34%</b> of origins "
-        "(correlation ≈ −0.24) — a genuine but minority pattern of hard data "
-        "correcting an initial survey-driven read, not the dominant dynamic; in the "
-        "other two-thirds of origins hard and soft data agree in direction."
+        "<b>Bounded interpretation.</b> Category allocations change with the "
+        "selected set and the attribution rule. They show what the fitted model "
+        "used to construct a nowcast level; they do not identify sectors that "
+        "caused GDP growth. The contribution window begins in 2017, not at the "
+        "2011 evaluation start."
     )
 
 
@@ -691,7 +590,7 @@ def _significance() -> None:
     st.markdown(
         "Pairwise tests of whether two models' squared-error losses differ "
         "significantly within each evaluation regime. Low p-values (dark green) "
-        "flag a meaningful accuracy gap; compare models **within** the selected "
+        "flag a statistically detectable difference; compare models **within** the selected "
         "regime rather than pooling the full 2011–2025 window."
     )
     regime_labels = {
@@ -720,15 +619,32 @@ def _significance() -> None:
         width='stretch',
     )
     T.callout(
-        "Regime splits matter because the full sample mixes calm, crisis and "
-        "stagnation periods. A large RMSFE gap against RW can still be "
-        "statistically insignificant if almost all of it comes from a few "
-        "extreme COVID quarters (high variance in the loss differential). "
-        "Closer models such as <b>combo_equal</b> vs <b>DFM-EN</b> can reject "
-        "more easily when the improvement is more consistent within the window. "
+        "A low p-value is evidence against equal squared-error accuracy; a high "
+        "p-value does not prove equality. Regime splits are short, especially "
         f"The COVID panel has only <b>{D.dm_regime_n('COVID')}</b> quarters, "
-        "so treat it as directional evidence rather than a definitive ranking."
+        "so read its tests and rankings as episode-specific evidence."
     )
+
+    st.markdown("<hr/>", unsafe_allow_html=True)
+    st.markdown("### Multiple-model comparison")
+    mcs = D.load_model_confidence_set()
+    if mcs.empty:
+        st.info("Model confidence set unavailable.")
+    else:
+        st.plotly_chart(charts.model_confidence_set(mcs), width="stretch")
+        retained = mcs["in_MCS"].astype(str).str.lower().eq("true")
+        retained_count = int(retained.sum())
+        if retained_count == len(mcs):
+            mcs_result = "cannot eliminate any candidate as inferior"
+        else:
+            mcs_result = (
+                f"retains {retained_count} of {len(mcs)} candidates"
+            )
+        T.callout(
+            f"At the 10% elimination level, the procedure {mcs_result}. "
+            "This multiplicity-aware result "
+            "shows low precision; it does not imply equal population accuracy."
+        )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
     st.markdown("### Forecast efficiency (Mincer–Zarnowitz)")
@@ -739,7 +655,7 @@ def _significance() -> None:
         "(correct scale). With this convention, **β > 1** means actual GDP moves "
         "more than the forecast, so the nowcast is too compressed; **β < 1** means "
         "the nowcast varies too much relative to the actual outcome. The forest plot shows each model's "
-        "estimated α and β with 95% confidence bands (HAC-robust standard errors). "
+        "estimated α and β with conventional OLS 95% confidence bands. "
         "A **dark ring** marks models where the joint test H₀: α = 0, β = 1 is "
         "rejected at the 5% level — those models are statistically biased or "
         "miscalibrated in magnitude, regardless of their RMSFE ranking."
@@ -748,55 +664,14 @@ def _significance() -> None:
     if mz.empty:
         st.info("Mincer–Zarnowitz table unavailable.")
     else:
-        st.plotly_chart(charts.mz_forest(mz), width='stretch')
+        st.plotly_chart(charts.mz_forest(mz), width="stretch")
         T.callout(
-            "<b>What to read from this plot:</b> The left panel tests systematic "
-            "bias (α = 0); the right panel tests whether the model's predictions "
-            "scale correctly with the outcome (β = 1). Because the regression is "
-            "<i>actual on nowcast</i>, slopes above one indicate compressed "
-            "forecasts; slopes below one indicate forecasts that are too volatile. "
-            "<br><br>"
-            "<b>Passing models (joint test not rejected at 5%):</b> "
-            "<b>combo_equal</b> (β ≈ 1.12, α ≈ −0.03, joint p ≈ 0.12) is the only "
-            "model that clears the 5% threshold — it has the lowest full-sample "
-            "RMSFE (0.68 pp) <i>and</i> the closest efficiency to the ideal (α "
-            "nearest zero, β nearest one) of any model shown. "
-            "<br><br>"
-            "<b>Borderline (joint test rejected, but not by much):</b> "
-            "<b>DFM-EN</b> (β ≈ 1.20, α ≈ −0.07, joint p ≈ 0.018) and "
-            "<b>DFM-SV-k2</b> (β ≈ 1.20, α ≈ −0.07, joint p ≈ 0.021) are both "
-            "mildly compressed relative to realised GDP and now reject the joint "
-            "test at 5% (they did not under the pre-cap EN selection), but are "
-            "far closer to efficient than the models below and are less accurate "
-            "in point terms than the combination (RMSFE ≈ 0.78 pp vs 0.68 pp). "
-            "<br><br>"
-            "<b>Failing models (joint test rejected):</b> "
-            "<b>DFM-ifoCAST</b> (β ≈ 1.51) is <i>too compressed</i> — realised GDP "
-            "moves more than its nowcasts, so the deviations from the mean would "
-            "need to be scaled up. <b>DFM-BlockBalanced</b> (β ≈ 0.78) goes in the "
-            "opposite direction: its nowcasts are <i>over-dispersed</i>, consistent "
-            "with the breadth constraint adding categories whose movements do not "
-            "always map one-for-one into GDP. "
-            "<b>DFM-TVP</b> (β ≈ 2.04, α ≈ −0.45) also rejects strongly — "
-            "forecasts are too compressed and slightly biased downward on the "
-            "full sample. This reflects a deliberate trade-off: the drifting "
-            "bridge and COVID down-weighting help post-COVID point accuracy "
-            "(RMSFE 0.30) but worsen COVID-window performance and full-sample "
-            "calibration. "
-            "The two non-linear benchmarks show comparable miscalibration: "
-            "<b>XGB-Full</b> (β ≈ 2.06, joint p ≈ 0.0002) and "
-            "<b>MLP-Factor</b> (β ≈ 2.30, joint p < 0.0001) both have slopes more "
-            "than twice the efficient value — their forecasts are strongly "
-            "compressed relative to realised GDP movements. This is consistent with "
-            "the learners smoothing or missing the extreme COVID tail rather than "
-            "solving it with non-linearity. Notably the factor-augmented MLP, fed "
-            "only the two DFM factors, fails in almost the same way as XGB on the "
-            "wide panel. "
-            "<br><br>"
-            "<b>Key insight:</b> A model can rank well on RMSFE yet still fail the "
-            "efficiency test — and vice versa. The equal-weight combination is the "
-            "cleanest overall result because it combines the lowest RMSFE with a "
-            "slope close to one and no rejection of forecast efficiency."
+            "Only the equal-weight combination avoids rejection of the joint "
+            "efficiency null in the full 60-quarter sample. Most slopes above one "
+            "reflect forecasts that under-reacted to the pandemic extremes. When "
+            "the eight COVID quarters are removed, every reported slope falls "
+            "below one, so the combination's apparent calibration is not stable "
+            "across regimes. Efficiency and RMSFE answer different questions."
         )
         with st.expander("Full regression table"):
             st.dataframe(mz.set_index("model").round(4), width='stretch')
@@ -811,16 +686,31 @@ def _significance() -> None:
              f"empirical coverage (nominal {row['coverage_nominal']:.0%})"),
             (f"{row['mean_width']:.2f} pp", "mean 90% interval width"),
             (f"{row['CRPS']:.3f}", "CRPS (lower is better)"),
-            (f"{row['RMSFE']:.3f} pp", "point RMSFE (SV-integrated point nowcast)"),
         ])
+        regime_coverage = D.sv_calibration_by_regime()
+        coverage_note = ""
+        if not regime_coverage.empty:
+            st.plotly_chart(
+                charts.sv_coverage_by_regime(regime_coverage),
+                width="stretch",
+            )
+            by_regime = regime_coverage.set_index("regime")
+            covid = by_regime.loc["COVID"]
+            post = by_regime.loc["post-COVID"]
+            coverage_note = (
+                f" COVID coverage is {covid['coverage']:.1%} "
+                f"({int(covid['covered'])}/{int(covid['n'])}); post-COVID "
+                f"coverage is {post['coverage']:.1%} "
+                f"({int(post['covered'])}/{int(post['n'])})."
+            )
         T.callout(
             "The stochastic-volatility layer feeds back into the Kalman smoother, "
             "so the point nowcast can differ slightly from plain DFM-EN while the "
-            "prediction intervals are calibrated from the model's own "
-            "SV-consistent predictive standard deviation. "
-            f"Empirical 90% coverage is <b>{row['coverage_empirical']:.0%}</b> "
-            f"(nominal {row['coverage_nominal']:.0%}); mean interval width "
-            f"<b>{row['mean_width']:.2f} pp</b>; CRPS <b>{row['CRPS']:.3f}</b>."
+            "bands use the model's SV-consistent predictive standard deviation. "
+            f"Pooled coverage is <b>{row['coverage_empirical']:.1%}</b>, close to "
+            f"90% nominal, but the regime split is the relevant qualification."
+            f"{coverage_note} Near-nominal pooled coverage can therefore conceal "
+            "poor shock coverage and overly wide calm-period intervals."
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -830,8 +720,9 @@ def _significance() -> None:
     T.callout(
         "<b>NSR</b> = noise-to-signal ratio (RMSFE relative to the GDP series' "
         "own volatility); <b>vs_AR1</b> rebases each RMSFE to the AR(1) "
-        "baseline (&lt;1 means it beats AR(1)). Over the full M3 window, "
-        "<b>combo_equal</b> records the lowest RMSFE among the models listed."
+        "baseline (&lt;1 means a lower point estimate). Over the full M3 window, "
+        "<b>combo_equal</b> records the lowest RMSFE; its DM test against AR(1) "
+        "does not reject equal accuracy."
     )
 
 
@@ -839,9 +730,9 @@ def _model_specs() -> None:
     st.markdown("### How each model is built")
     st.markdown(
         '<div class="spec-intro">Reference cards for every model family in the '
-        "horse-race: design choices, fixed hyperparameters, and — for the "
+        "comparison: design choices, fixed hyperparameters, and — for the "
         "machine-learning benchmarks — exactly which specifications are reported "
-        "and why. All models share one real-time protocol below.</div>",
+        "and why. All models share one pseudo-real-time protocol below.</div>",
         unsafe_allow_html=True,
     )
 
@@ -853,6 +744,8 @@ def _model_specs() -> None:
                             "(BIC lag selection) on the transformed series, "
                             "then back-transformed to raw levels before aggregation."),
         ("Target", "German real GDP, QoQ log-growth, <b>first release</b>."),
+        ("Vintage scope", "Predictor publication lags are enforced, but historical "
+                          "predictor revisions are not reconstructed."),
         ("Aggregation", "Back-transform the AR-filled panel to raw monthly "
                         "levels → compute quarterly <b>mean</b> of the three "
                         "months → re-transform to stationary growth rates "
@@ -897,11 +790,12 @@ def _model_specs() -> None:
                                "Kalman smoother for the state."),
             ],
             variants=[
-                ("DFM-ifoCAST", "ifo's published 21-indicator expert set (supervisor-confirmed mapping: 20 unique predictors)."),
+                ("DFM-ifoCAST", "Fixed 19-series operational reference set."),
                 ("DFM-EN", "Elastic Net selection — primary data-driven configuration."),
                 ("DFM-BlockBalanced", "EN with structural breadth: ≥1 per category, cap 20."),
+                ("DFM-PLS", "Top 30 indicators by PLS variable importance."),
             ],
-            variant_label="Three indicator sets",
+            variant_label="Four indicator sets",
         )
 
     with fam_tvp:
@@ -938,9 +832,8 @@ def _model_specs() -> None:
                                     "2020Q1–2021Q4 in Stage 2 only."),
                 ("Nowcast", "Uses the random-walk forecast of bridge coefficients "
                             "times the current-quarter factor vector."),
-                ("Horse-race role", "Post-COVID RMSFE 0.30 pp vs 0.45 for DFM-EN, "
-                                    "but worse in COVID and on the full sample — "
-                                    "a regime-specific remedy, not the headline model."),
+                ("Empirical role", "Lower post-COVID point error than DFM-EN, but "
+                                   "worse during COVID and over the full sample."),
             ],
             variants=[
                 ("DFM-TVP", "EN inputs · random-walk bridge · COVID-down-weighted "
@@ -1040,7 +933,7 @@ def _model_specs() -> None:
                 "Gradient-boosted regression trees (Chen &amp; Guestrin 2016) on a "
                 "wide lag-expanded feature matrix. The workflow below details "
                 "how the full panel, SHAP pruning, and GDP lags are combined "
-                "under the shared real-time protocol."
+                "under the shared pseudo-real-time protocol."
             ),
             rows=[
                 ("Learner", "XGBRegressor, squared-error loss, histogram trees."),
@@ -1089,8 +982,8 @@ def _model_specs() -> None:
     with fam5:
         st.markdown(
             f"<div style='color:{C.SUBTLE};font-size:0.9rem;line-height:1.55;"
-            "margin-bottom:0.85rem'>Classical benchmarks and the inverse-MSE "
-            "combination, all evaluated on the same real-time grid.</div>",
+            "margin-bottom:0.85rem'>Classical benchmarks and the equal-weight "
+            "combination, all evaluated on the same pseudo-real-time grid.</div>",
             unsafe_allow_html=True,
         )
         T.spec_baseline_grid([
@@ -1106,6 +999,6 @@ def _model_specs() -> None:
 
     T.callout(
         "Every model is evaluated on the <b>same</b> first-release GDP target "
-        "and real-time information set. Differences in RMSFE therefore reflect "
-        "modelling choices — not data handling."
+        "and publication-lag protocol. Comparisons remain pseudo-real-time because "
+        "predictor revisions are not simulated."
     )

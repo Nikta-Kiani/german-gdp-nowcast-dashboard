@@ -3,10 +3,9 @@
 
 Every number produced here is fabricated with a seeded random-number
 generator — there is no real thesis data anywhere in this script or its
-output. The point is schema-fidelity: each file has the exact columns and
-dtypes the dashboard's data layer expects (verified against the original
-research pipeline), so the app renders every page and never crashes on a
-clean clone, while the values themselves carry no information about the
+output. The point is dashboard compatibility: each file provides the columns
+and dtypes used by the corresponding dashboard view, so the app renders on a
+clean clone while the values themselves carry no information about the
 licensed source data behind the real analysis.
 
 Usage:
@@ -18,6 +17,7 @@ it always overwrites its own output directory.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -26,6 +26,9 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
+# The application prefers data/real when it exists. A generator must never
+# inherit that resolution rule or overwrite locally staged thesis artefacts.
+os.environ["DASHBOARD_DATA_DIR"] = str(REPO_ROOT / "data" / "demo")
 
 from dashboard import config as C  # noqa: E402
 from dashboard.stats import align_forecast_errors, diebold_mariano_test  # noqa: E402
@@ -316,6 +319,24 @@ def write_rmsfe_table(frames: dict[str, pd.DataFrame]) -> None:
     pd.DataFrame(rows).to_csv(C.RMSFE_ALL_CSV, index=False)
 
 
+def write_model_confidence_set(frames: dict[str, pd.DataFrame]) -> None:
+    """Write a schema-faithful fabricated 90% MCS table for demo mode."""
+    rows = []
+    for key, df in frames.items():
+        err = _m3(df)["error"].to_numpy(dtype=float)
+        mean_loss = float(np.mean(err ** 2))
+        rows.append({
+            "model": key,
+            "n": int(len(err)),
+            "RMSFE": float(np.sqrt(mean_loss)),
+            "mean_loss": mean_loss,
+        })
+    out = pd.DataFrame(rows).sort_values("RMSFE").reset_index(drop=True)
+    out["MCS_p_value"] = np.linspace(1.0, 0.22, len(out))
+    out["in_MCS"] = True
+    out.to_csv(C.MCS_CSV, index=False)
+
+
 def write_horizon_tables(frames: dict[str, pd.DataFrame]) -> None:
     profile_rows, bv_rows = [], []
     for key, df in frames.items():
@@ -438,6 +459,44 @@ def write_revision_path(frames: dict[str, pd.DataFrame]) -> None:
     out.to_csv(C.REVISION_CSV, index=False)
 
 
+def write_release_block_states(frames: dict[str, pd.DataFrame]) -> None:
+    """Fabricate the four post-COVID release-block states with valid identities."""
+    df = frames["DFM-EN"].copy()
+    df["quarter_p"] = pd.PeriodIndex(df["quarter"], freq="Q")
+    post = df.loc[df["quarter_p"] >= pd.Period("2022Q1", freq="Q")]
+    m1_error = (
+        post.loc[post["month_in_quarter"] == 1]
+        .set_index("quarter")["error"]
+        .astype(float)
+    )
+    rows = []
+    for month, horizon in ((2, "M2"), (3, "M3")):
+        full_error = (
+            post.loc[post["month_in_quarter"] == month]
+            .set_index("quarter")["error"]
+            .astype(float)
+        )
+        state_errors = {
+            "both_frozen": m1_error,
+            "other_only": 0.98 * m1_error,
+            "hard_only": 0.96 * full_error,
+            "full": full_error,
+        }
+        for state, errors in state_errors.items():
+            bias = float(errors.mean())
+            mse = float(np.mean(errors.to_numpy() ** 2))
+            rows.append({
+                "horizon": horizon,
+                "state": state,
+                "N": int(len(errors)),
+                "RMSFE": float(np.sqrt(mse)),
+                "MSE": mse,
+                "bias": bias,
+                "error_variance": float(np.mean((errors - bias) ** 2)),
+            })
+    pd.DataFrame(rows).to_csv(C.RELEASE_BLOCK_STATES_CSV, index=False)
+
+
 # --------------------------------------------------------------------------- #
 # Factor loadings, SHAP, ragged edge, XGB sensitivity
 # --------------------------------------------------------------------------- #
@@ -492,12 +551,19 @@ def write_ragged_edge(universe: pd.DataFrame) -> None:
 
 
 def write_xgb_sensitivity() -> None:
-    runs = [f"seed_{s}" for s in (42, 1, 2, 3, 4)] + \
-           ["max_depth_4", "max_depth_8", "n_estimators_300", "learning_rate_low"]
+    runs = [f"seed_{s}" for s in (42, 0, 1, 7, 123)] + [
+        "hp_max_depth-1",
+        "hp_max_depth+1",
+        "hp_lr_half",
+        "hp_lr_double",
+        "hp_n_estimators-100",
+        "hp_n_estimators+100",
+    ]
     rows = []
     for run in runs:
         rows.append({
-            "run": run, "seed": 42 if not run.startswith("seed_") else int(run.split("_")[1]),
+            "run": run,
+            "seed": 42 if not run.startswith("seed_") else int(run.split("_")[1]),
             "cv_rmse": round(float(RNG.uniform(0.9, 1.2)), 4),
             "rmsfe_pre": round(float(RNG.uniform(0.8, 1.1)), 4),
             "rmsfe_COVID": round(float(RNG.uniform(2.0, 3.5)), 4),
@@ -586,12 +652,14 @@ def main() -> None:
 
     frames = write_model_files(gdp)
     write_rmsfe_table(frames)
+    write_model_confidence_set(frames)
     write_horizon_tables(frames)
     write_post_covid_table(frames)
     write_dm_matrix(frames)
     write_mincer_zarnowitz(frames)
     write_sv_calibration(frames)
     write_revision_path(frames)
+    write_release_block_states(frames)
 
     write_factor_loadings()
     write_shap(universe)

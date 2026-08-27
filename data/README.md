@@ -50,12 +50,13 @@ The dashboard resolves its data directory in this order (see
 ## Regenerating the demo sample
 
 ```bash
-python scripts/generate_demo_data.py
+python3 scripts/generate_demo_data.py
 ```
 
 This rebuilds `data/demo/` from a seeded random-number generator — no real
-data required. See [`docs/DATA.md`](../docs/DATA.md) for why the real results
-aren't in this repository.
+data required. The script explicitly targets `data/demo/`, even when
+`data/real/` exists. See [`docs/DATA.md`](../docs/DATA.md) for why the real
+results aren't in this repository.
 
 ## Staging real data locally
 
@@ -63,7 +64,7 @@ Point the staging script at the research pipeline root containing `outputs/`
 and `data/metadata/`:
 
 ```bash
-python scripts/stage_real_data.py --source /path/to/pipeline-root
+python3 scripts/stage_real_data.py --source /path/to/pipeline-root
 ```
 
 ## Deploying with real data (without committing it anywhere public)

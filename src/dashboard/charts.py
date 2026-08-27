@@ -50,49 +50,109 @@ def _cat_display(cat: str) -> str:
 # =========================================================================== #
 # Part II — Nowcasting
 # =========================================================================== #
-def rmsfe_regime_bars(rmsfe_long: pd.DataFrame, models: list[str],
-                      regimes: list[str]) -> go.Figure:
-    """Grouped horizontal bars: RMSFE per model, one panel per regime."""
-    fig = make_subplots(
-        rows=1, cols=len(regimes), shared_yaxes=True, horizontal_spacing=0.04,
-        subplot_titles=[
-            f"<b>{r}</b><br><span style='font-size:11px;color:{C.SUBTLE}'>"
-            f"{C.REGIMES[r][0]}–{C.REGIMES[r][1]}</span>" for r in regimes
-        ],
+def rmsfe_regime_bars(
+    rmsfe_long: pd.DataFrame,
+    models: list[str],
+    regimes: list[str],
+    full_window_order: list[str],
+) -> go.Figure:
+    """Horizontal RMSFE bars ordered by the full-window accuracy table."""
+    n_by_regime = (
+        rmsfe_long.loc[rmsfe_long["regime"].isin(regimes)]
+        .groupby("regime")["n"].max().to_dict()
+        if "n" in rmsfe_long.columns else {}
     )
-    ordered = [m for m in C.MODEL_ORDER if m in models]
+
+    def _panel_title(regime: str) -> str:
+        q0, q1 = C.REGIMES[regime]
+        n = n_by_regime.get(regime)
+        meta = f"{q0}–{q1}" + (f"  ·  N = {int(n)}" if pd.notna(n) else "")
+        return (
+            f"<b>{regime}</b><br>"
+            f"<span style='font-size:10px;color:{C.SUBTLE}'>{meta}</span>"
+        )
+
+    fig = make_subplots(
+        rows=1, cols=len(regimes), shared_yaxes=True, horizontal_spacing=0.06,
+        subplot_titles=[_panel_title(r) for r in regimes],
+    )
+    ordered = [model for model in full_window_order if model in models]
+    ordered.extend(
+        model
+        for model in C.MODEL_ORDER
+        if model in models and model not in ordered
+    )
     y_labels = [C.model_label(m) for m in ordered]
     for col, regime in enumerate(regimes, start=1):
         sub = rmsfe_long[rmsfe_long["regime"] == regime].set_index("model")
-        vals = [sub["rmsfe"].get(m, np.nan) for m in ordered]
+        vals = [float(sub["rmsfe"].get(m, np.nan)) for m in ordered]
         colors = [C.model_color(m) for m in ordered]
+        finite = [v for v in vals if np.isfinite(v)]
+        best = min(finite) if finite else np.nan
+        is_best = [np.isfinite(v) and np.isclose(v, best) for v in vals]
         fig.add_trace(
             go.Bar(
                 x=vals, y=y_labels, orientation="h",
-                marker=dict(color=colors, line=dict(width=0)),
+                marker=dict(
+                    color=colors,
+                    line=dict(
+                        color=[C.INK if b else "rgba(0,0,0,0)" for b in is_best],
+                        width=1.15,
+                    ),
+                ),
                 text=[f"{v:.2f}" if np.isfinite(v) else "" for v in vals],
-                textposition="outside", textfont=dict(size=10, color=C.SUBTLE),
+                textposition="outside",
+                textfont=dict(
+                    size=[11 if b else 10 for b in is_best],
+                    color=[C.INK if b else C.SUBTLE for b in is_best],
+                ),
                 cliponaxis=False, showlegend=False,
                 hovertemplate=("<b>%{y}</b><br>" + regime +
                                "<br>RMSFE: %{x:.3f} pp<extra></extra>"),
             ),
             row=1, col=col,
         )
-    fig.update_yaxes(autorange="reversed", row=1, col=1)
-    fig.update_xaxes(title_text="RMSFE (pp)", ticksuffix="", showgrid=True,
-                     title_standoff=12)
+        if finite:
+            # Headroom so outside labels are not clipped; scales stay independent.
+            fig.update_xaxes(range=[0, max(finite) * 1.36], row=1, col=col)
+    n_models = len(ordered)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_yaxes(
+        autorange=False,
+        range=[n_models - 0.5, -0.5 - 0.18],
+        ticklabelstandoff=8,
+        row=1, col=1,
+    )
+    fig.update_xaxes(
+        title_text="RMSFE (pp)", ticksuffix="", showgrid=True,
+        gridcolor=C.GRID, gridwidth=1,
+        title_standoff=14, zeroline=True, zerolinecolor=C.INK,
+        zerolinewidth=0.7, showline=False,
+    )
     fig.update_layout(
-        height=480, bargap=0.25,
+        height=480, bargap=0.30,
         margin=dict(t=132, b=55, l=140, r=40),
         title=dict(
             text="Predictive accuracy by economic regime<br>"
                  "<span style='font-size:13px;color:%s'>RMSFE at the final "
-                 "(M3) information set, by regime</span>" % C.SUBTLE,
+                 "(M3) information set · model order follows the full-window "
+                 "RMSE ranking below</span>" % C.SUBTLE,
             y=0.95, yanchor="top",
         ),
     )
-    # Larger top margin opens a clear gap between the figure title and the
-    # per-regime subplot titles (which sit at the top of the plotting area).
+    # Regime-coloured cap at the top of each panel, sitting in the gap
+    # between the subplot title and the first bar.
+    for i, regime in enumerate(regimes, start=1):
+        xaxis = fig.layout.xaxis if i == 1 else fig.layout[f"xaxis{i}"]
+        yaxis = fig.layout.yaxis if i == 1 else fig.layout[f"yaxis{i}"]
+        fig.add_shape(
+            type="line",
+            xref="paper", yref="paper",
+            x0=xaxis.domain[0], x1=xaxis.domain[1],
+            y0=yaxis.domain[1], y1=yaxis.domain[1],
+            line=dict(color=C.REGIME_COLORS.get(regime, C.ACCENT), width=2.6),
+            layer="above",
+        )
     for ann in fig.layout.annotations[:len(regimes)]:
         ann.update(font=dict(size=13, color=C.INK))
     return fig
@@ -146,7 +206,7 @@ def nowcast_timeseries(ts_long: pd.DataFrame, models: list[str],
     y_title = "GDP growth (pp, symlog)" if log_y else "GDP growth (pp)"
     fig.update_layout(
         height=480, hovermode="x unified",
-        title="Nowcast vs realised GDP growth (quarter-on-quarter, %)",
+        title="Nowcast vs realised GDP growth (quarter-on-quarter, pp)",
         legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center"),
         margin=dict(t=70, b=90, l=70, r=30),
     )
@@ -195,6 +255,56 @@ def horizon_profile(df: pd.DataFrame, models: list[str], regime: str) -> go.Figu
     )
     fig.update_xaxes(title_text="Information set (month in quarter)")
     fig.update_yaxes(title_text="RMSFE (pp)")
+    return fig
+
+
+def release_block_counterfactual(df: pd.DataFrame) -> go.Figure:
+    """Post-COVID DFM-EN RMSFE under four M1-frozen/update information sets."""
+    horizon_order = ["M2", "M3"]
+    state_order = ["both_frozen", "other_only", "hard_only", "full"]
+    fig = go.Figure()
+    for state in state_order:
+        sub = (
+            df.loc[df["state"] == state]
+            .set_index("horizon")
+            .reindex(horizon_order)
+        )
+        vals = sub["RMSFE"].astype(float)
+        fig.add_trace(go.Bar(
+            x=horizon_order,
+            y=vals,
+            name=C.RELEASE_BLOCK_LABELS[state],
+            marker_color=C.RELEASE_BLOCK_COLORS[state],
+            text=[f"{value:.3f}" for value in vals],
+            textposition="outside",
+            cliponaxis=False,
+            customdata=np.column_stack([
+                sub["N"].fillna(0).astype(int),
+                sub["bias"].astype(float),
+            ]),
+            hovertemplate=(
+                "<b>" + C.RELEASE_BLOCK_LABELS[state] + "</b><br>"
+                "%{x} RMSFE: %{y:.3f} pp<br>"
+                "Bias: %{customdata[1]:+.3f} pp<br>"
+                "N = %{customdata[0]}<extra></extra>"
+            ),
+        ))
+    fig.update_layout(
+        barmode="group",
+        height=450,
+        title=(
+            "Post-COVID DFM-EN release-block counterfactual"
+            f"<br><span style='font-size:12px;color:{C.SUBTLE}'>"
+            "2022Q1–2025Q4 · N = 16 · lower RMSFE is better</span>"
+        ),
+        legend=dict(
+            orientation="h", y=-0.18, x=0.5, xanchor="center",
+            font=dict(size=11),
+        ),
+        margin=dict(t=90, b=95, l=70, r=30),
+    )
+    fig.update_xaxes(title_text="Information set")
+    fig.update_yaxes(title_text="RMSFE (pp)", rangemode="tozero")
     return fig
 
 
@@ -316,15 +426,32 @@ def revision_band(df: pd.DataFrame, log_y: bool = False) -> go.Figure:
     return fig
 
 
-def mz_forest(mz: pd.DataFrame) -> go.Figure:
+def mz_forest(mz: pd.DataFrame,
+              model_order: list[str] | None = None) -> go.Figure:
     """Mincer–Zarnowitz coefficient plot: α and β with 95% CIs per model.
 
     Two aligned panels (intercept and slope) with reference lines at the
     efficient values α = 0 and β = 1. Models whose joint efficiency test
     rejects at 5% are drawn with a dark ring. A forest layout avoids the
     label pile-up of a scatter when several models cluster near the ideal.
+
+    Default order is the joint efficiency test: highest
+    ``p_joint_H0_a0_b1`` at the top (least evidence against α = 0, β = 1).
+    Ties break on |β − 1|, then |α|. Pass ``model_order`` to override.
     """
-    sub = mz.sort_values("beta", ascending=True).reset_index(drop=True)
+    present = mz["model"].tolist()
+    if model_order:
+        ordered = [m for m in model_order if m in present]
+        ordered.extend(m for m in present if m not in ordered)
+        sub = mz.set_index("model").loc[ordered].reset_index()
+    else:
+        sub = mz.assign(
+            _d_beta=(mz["beta"] - 1.0).abs(),
+            _d_alpha=mz["alpha"].abs(),
+        ).sort_values(
+            ["p_joint_H0_a0_b1", "_d_beta", "_d_alpha"],
+            ascending=[False, True, True],
+        ).drop(columns=["_d_beta", "_d_alpha"]).reset_index(drop=True)
     models = sub["model"].tolist()
 
     fig = make_subplots(
@@ -334,8 +461,13 @@ def mz_forest(mz: pd.DataFrame) -> go.Figure:
     )
     for col, (val, se, ref) in enumerate(
             [("alpha", "se_alpha", 0.0), ("beta", "se_beta", 1.0)], start=1):
-        fig.add_vline(x=ref, line=dict(color=C.SUBTLE, width=1.3, dash="dash"),
-                      row=1, col=col)
+        # Scatter, not add_vline: Kaleido PDF export often drops or solidifies
+        # dashed layout shapes, which made α = 0 / β = 1 invisible in the thesis.
+        fig.add_trace(go.Scatter(
+            x=[ref] * len(models), y=models, mode="lines",
+            line=dict(color=C.INK, width=1.9, dash="dash"),
+            hoverinfo="skip", showlegend=False,
+        ), row=1, col=col)
         for i, r in sub.iterrows():
             rejected = float(r["p_joint_H0_a0_b1"]) < 0.05
             color = _dfm_table_color(r["model"])
@@ -360,12 +492,14 @@ def mz_forest(mz: pd.DataFrame) -> go.Figure:
         height=420,
         title="Mincer–Zarnowitz forecast efficiency — actual = α + β · nowcast"
               "<br><span style='font-size:12px;color:" + C.SUBTLE + "'>"
-              "Whiskers are 95% CIs (HAC). Dashed lines mark the efficient "
+              "Whiskers are conventional OLS 95% CIs. Dashed lines mark the efficient "
               "values α = 0, β = 1;<br>a dark ring marks models where the "
               "joint test rejects efficiency at 5%.</span>",
         margin=dict(t=125, b=55, l=150, r=30),
     )
-    fig.update_yaxes(categoryorder="array", categoryarray=models, row=1, col=1)
+    fig.update_yaxes(categoryorder="array", categoryarray=models,
+                     autorange="reversed", row=1, col=1)
+    fig.update_xaxes(zeroline=False, showgrid=False)
     for ann in fig.layout.annotations[:2]:
         ann.update(font=dict(size=12, color=C.INK))
     return fig
@@ -401,7 +535,7 @@ def post_covid_bars(df: pd.DataFrame, regime_col: str) -> go.Figure:
         hovertemplate="<b>%{y}</b><br>RMSFE: %{x:.3f} pp<extra></extra>",
     ))
     fig.update_layout(
-        height=420, title=f"Benchmark horse-race — {label} (RMSFE, M3)",
+        height=420, title=f"Benchmark comparison — {label} (RMSFE, M3)",
         margin=dict(t=70, b=50, l=170, r=50),
     )
     fig.update_xaxes(title_text="RMSFE (pp)")
@@ -571,6 +705,96 @@ def dm_heatmap(
     return fig
 
 
+def model_confidence_set(df: pd.DataFrame) -> go.Figure:
+    """Display MCS p-values and 10% retention threshold for all candidates."""
+    sub = df.sort_values("RMSFE", ascending=True).copy()
+    labels = [C.model_label(model) for model in sub["model"]]
+    retained = sub["in_MCS"].astype(str).str.lower().eq("true")
+    retained_count = int(retained.sum())
+    colors = [
+        C.model_color(model) if keep else "#C4CFDE"
+        for model, keep in zip(sub["model"], retained)
+    ]
+    fig = go.Figure(go.Scatter(
+        x=sub["MCS_p_value"],
+        y=labels,
+        mode="markers",
+        marker=dict(size=12, color=colors, line=dict(color=C.INK, width=0.6)),
+        customdata=np.column_stack([sub["RMSFE"], retained]),
+        hovertemplate=(
+            "<b>%{y}</b><br>MCS p-value: %{x:.3f}<br>"
+            "RMSFE: %{customdata[0]:.3f} pp<br>"
+            "Retained: %{customdata[1]}<extra></extra>"
+        ),
+    ))
+    fig.add_vline(
+        x=0.10,
+        line=dict(color=C.SUBTLE, width=1.5, dash="dash"),
+        annotation_text="10% elimination level",
+        annotation_position="top right",
+    )
+    fig.update_layout(
+        height=470,
+        title=(
+            "90% model confidence set"
+            f"<br><span style='font-size:12px;color:{C.SUBTLE}'>"
+            f"Full M3 sample, 2011Q1–2025Q4 · {retained_count} of "
+            f"{len(sub)} candidates retained"
+            "</span>"
+        ),
+        margin=dict(t=100, b=55, l=170, r=30),
+        showlegend=False,
+    )
+    fig.update_xaxes(title_text="MCS p-value", range=[0, 1.04], showgrid=True)
+    fig.update_yaxes(autorange="reversed", showgrid=False)
+    return fig
+
+
+def sv_coverage_by_regime(df: pd.DataFrame) -> go.Figure:
+    """Empirical DFM-SV 90% interval coverage in the fixed regimes."""
+    sub = df.set_index("regime").reindex(C.REGIMES).reset_index()
+    colors = [C.REGIME_COLORS[regime] for regime in sub["regime"]]
+    fig = go.Figure(go.Bar(
+        x=sub["regime"],
+        y=sub["coverage"],
+        marker_color=colors,
+        text=[f"{value:.1%}" for value in sub["coverage"]],
+        textposition="outside",
+        cliponaxis=False,
+        customdata=np.column_stack([
+            sub["covered"].astype(int),
+            sub["n"].astype(int),
+            sub["misses"].astype(int),
+            sub["mean_width"].astype(float),
+        ]),
+        hovertemplate=(
+            "<b>%{x}</b><br>Coverage: %{y:.1%}<br>"
+            "Covered: %{customdata[0]} of %{customdata[1]}<br>"
+            "Misses: %{customdata[2]}<br>"
+            "Mean width: %{customdata[3]:.2f} pp<extra></extra>"
+        ),
+    ))
+    fig.add_hline(
+        y=0.90,
+        line=dict(color=C.INK, width=1.5, dash="dash"),
+        annotation_text="90% nominal",
+        annotation_position="top left",
+    )
+    fig.update_layout(
+        height=390,
+        title="DFM-SV interval coverage by regime",
+        margin=dict(t=70, b=55, l=70, r=30),
+        showlegend=False,
+    )
+    fig.update_yaxes(
+        title_text="Empirical coverage",
+        range=[0, 1.12],
+        tickformat=".0%",
+    )
+    fig.update_xaxes(title_text="")
+    return fig
+
+
 def contributions_stacked(df: pd.DataFrame, start: str, end: str,
                           mode: str = "pp",
                           origin_hovers: dict[tuple[pd.Timestamp, str], str]
@@ -650,6 +874,135 @@ def contributions_stacked(df: pd.DataFrame, start: str, end: str,
         margin=dict(t=70, b=100, l=70, r=30),
     )
     fig.update_yaxes(title_text=ytitle)
+    return fig
+
+
+def contributions_tvp_bridge(
+    df: pd.DataFrame, start: str, end: str,
+    mode: str = "pp",
+    origin_hovers: dict[tuple[pd.Timestamp, str], str] | None = None,
+) -> go.Figure:
+    """Two-panel DFM-TVP attribution: intercept as a level, categories as deviations.
+
+    The TVP nowcast is ``a_q + sum_j λ_{j,q} f_{j,q}``. The upper panel shows
+    realised GDP, the nowcast, and the bridge intercept ``a_q``. The lower
+    panel shows signed category contributions that sum to the factor-driven
+    remainder ``nowcast − a_q``. The intercept is therefore *not* drawn as an
+    economic-category bar.
+    """
+    sub = df[(df["date"] >= start) & (df["date"] <= end)].copy()
+    if sub.empty:
+        return go.Figure()
+
+    hovers = origin_hovers or {}
+
+    def _hover_extra(dt, cat: str) -> str:
+        text = hovers.get((pd.Timestamp(dt), cat), "")
+        return f"<br>{text}" if text else ""
+
+    piv = (sub.pivot_table(index="date", columns="category",
+                           values="contrib_pp", aggfunc="mean")
+           .reindex(columns=C.CATEGORY_ORDER))
+    intercept = piv["Baseline"] if "Baseline" in piv.columns else pd.Series(
+        0.0, index=piv.index)
+    intercept = intercept.fillna(0.0)
+    factor_cats = [
+        c for c in C.CATEGORY_ORDER
+        if c != "Baseline" and c in piv.columns and piv[c].abs().sum() != 0
+    ]
+    factor_wide = piv[factor_cats].fillna(0.0) if factor_cats else pd.DataFrame(
+        index=piv.index)
+    remainder = factor_wide.sum(axis=1) if not factor_wide.empty else pd.Series(
+        0.0, index=piv.index)
+
+    nc = sub.groupby("date")["nowcast"].first()
+    ac = sub.groupby("date")["actual"].first()
+
+    fig = make_subplots(
+        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.015,
+        row_heights=[0.34, 0.66],
+    )
+    fig.add_trace(go.Scatter(
+        x=intercept.index, y=intercept.values, name="Bridge intercept",
+        mode="lines", line=dict(color=C.SUBTLE, width=2.2),
+        hovertemplate=("Bridge intercept a<sub>q</sub><br>"
+                       "%{x|%b %Y}: %{y:+.3f} pp<extra></extra>"),
+        legendgroup="levels",
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=nc.index, y=nc.values, name="Nowcast",
+        mode="lines+markers", line=dict(color=C.INK, width=2),
+        marker=dict(size=5),
+        hovertemplate="Nowcast<br>%{x|%b %Y}: %{y:+.3f} pp<extra></extra>",
+        legendgroup="levels",
+    ), row=1, col=1)
+    fig.add_trace(go.Scatter(
+        x=ac.index, y=ac.values, name="Realised GDP",
+        mode="lines", line=dict(color=C.ACCENT, width=2, dash="dot"),
+        hovertemplate=("Realised GDP<br>%{x|%b %Y}: %{y:+.3f} pp"
+                       "<extra></extra>"),
+        legendgroup="levels",
+    ), row=1, col=1)
+
+    if mode == "pct":
+        pos = factor_wide.clip(lower=0).sum(axis=1).replace(0, np.nan)
+        neg = factor_wide.clip(upper=0).sum(axis=1).abs().replace(0, np.nan)
+        for cat in factor_cats:
+            col = factor_wide[cat]
+            scaled = np.where(col >= 0, col.div(pos) * 100.0,
+                              col.div(neg) * 100.0)
+            scaled = np.round(scaled, 2)
+            custom = []
+            for dt, val in zip(factor_wide.index, scaled):
+                extra = _hover_extra(dt, cat)
+                pct = f"{val:+.2f}" if np.isfinite(val) else ""
+                custom.append([extra, pct])
+            fig.add_trace(go.Bar(
+                x=factor_wide.index, y=scaled, name=_cat_display(cat),
+                marker_color=C.CATEGORY_COLORS[cat],
+                customdata=custom, legendgroup="cats",
+                hovertemplate=("<b>" + _cat_display(cat) + "</b><br>"
+                               "%{x|%b %Y}: %{customdata[1]}%<br>"
+                               "%{customdata[0]}<extra></extra>"),
+            ), row=2, col=1)
+        ytitle_lower = "Share of |factor-driven remainder| (%)"
+    else:
+        for cat in factor_cats:
+            extras = [_hover_extra(dt, cat) for dt in factor_wide.index]
+            fig.add_trace(go.Bar(
+                x=factor_wide.index, y=factor_wide[cat],
+                name=_cat_display(cat),
+                marker_color=C.CATEGORY_COLORS[cat],
+                customdata=extras, legendgroup="cats",
+                hovertemplate=("<b>" + _cat_display(cat) + "</b><br>"
+                               "%{x|%b %Y}: %{y:+.3f} pp"
+                               "%{customdata}<extra></extra>"),
+            ), row=2, col=1)
+        fig.add_trace(go.Scatter(
+            x=remainder.index, y=remainder.values,
+            name="Factor-driven remainder",
+            mode="lines",
+            line=dict(color=C.INK, width=1.6, dash="dash"),
+            hovertemplate=("Factor-driven remainder "
+                           "(nowcast − intercept)<br>"
+                           "%{x|%b %Y}: %{y:+.3f} pp<extra></extra>"),
+            legendgroup="levels",
+        ), row=2, col=1)
+        ytitle_lower = "Deviation from intercept (pp)"
+
+    fig.add_hline(y=0, line=dict(color="#C5CED8", width=0.8), row=2, col=1)
+    fig.update_layout(
+        barmode="relative", height=620,
+        title=("DFM-TVP nowcast = intercept + factor-driven category "
+               "contributions"),
+        legend=dict(orientation="h", y=-0.14, x=0.5, xanchor="center",
+                    traceorder="normal"),
+        margin=dict(t=70, b=110, l=70, r=30),
+        hovermode="closest",
+    )
+    fig.update_yaxes(title_text="GDP growth (pp, q/q)", row=1, col=1)
+    fig.update_yaxes(title_text=ytitle_lower, row=2, col=1)
+    fig.update_xaxes(visible=False, row=1, col=1)
     return fig
 
 

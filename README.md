@@ -1,6 +1,6 @@
 # German GDP Nowcast Dashboard
 
-### Interactive companion to a master's thesis on real-time German GDP nowcasting
+### Interactive companion to a master's thesis on pseudo-real-time German GDP nowcasting
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://german-gdp-nowcast-dashboard.streamlit.app)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -11,9 +11,8 @@
 
 **[Live demo](https://german-gdp-nowcast-dashboard.streamlit.app) · [Research pipeline repo](https://github.com/Nikta-Kiani/german-gdp-nowcasting) · [Data & privacy notes](docs/DATA.md)**
 
-> Which monthly indicators actually move a real-time German GDP nowcast, and
-> which models best turn them into a forecast? This dashboard makes that
-> question explorable.
+> Which monthly indicators receive weight under different selection methods,
+> and how do competing German GDP nowcasts behave across regimes?
 
 ---
 
@@ -27,18 +26,17 @@ live estimate of current-quarter growth, updated as new data arrives.
 This dashboard is the interactive front end for a master's thesis that asks
 two linked questions:
 
-1. **Indicator selection** — which of ~580 candidate monthly series carry
-   real, stable predictive signal for GDP, and does that set shift across
+1. **Indicator selection** — which of 585 candidate monthly series receive
+   predictive weight for GDP, and does that set shift across
    economic regimes (pre-COVID / COVID / post-COVID)?
 2. **Nowcasting accuracy** — do models built on those data-driven indicator
    sets beat classical baselines and a fixed expert-curated panel
-   (ifo's ifoCAST), and can Bayesian stochastic-volatility models keep
-   forecast intervals honest through the pandemic shock?
+   (ifo's ifoCAST), and how does stochastic volatility affect interval
+   calibration through the pandemic shock?
 
 It presents the full pipeline end to end: from a 585-series candidate panel,
-through five indicator-selection methods, into eleven nowcasting models
-evaluated out-of-sample over 2011–2025 — as a guided, two-part interactive
-tour rather than a static PDF of tables.
+through four statistical selection signals and one fixed expert reference,
+into eleven nowcasting candidates evaluated out-of-sample over 2011–2025.
 
 ## Visuals
 
@@ -85,11 +83,12 @@ Dynamic Factor Model** (Mariano–Murasawa encoding, EM-Kalman estimation, 2
 latent factors) with two extensions — **time-varying parameters** and
 **Bayesian stochastic volatility** — plus **XGBoost** and a **factor-augmented
 MLP** as machine-learning benchmarks, against classical **AR(1)** and
-**Random Walk** baselines. All eleven models are evaluated out-of-sample at
-the real-time information set (publication-lag masking + AR ragged-edge fill,
-so no future information ever leaks into a historical forecast), using RMSFE,
-Diebold–Mariano tests, Mincer–Zarnowitz regressions, and interval-coverage
-diagnostics across three economic regimes (pre-COVID / COVID / post-COVID).
+**Random Walk** baselines. All eleven candidates are evaluated out-of-sample
+under publication-lag masking and AR ragged-edge fill. The exercise is
+pseudo-real-time: historical predictor revisions are not reconstructed. The
+dashboard reports RMSFE, Diebold–Mariano tests, a 90% model confidence set,
+Mincer–Zarnowitz regressions, release-block counterfactuals, and interval
+coverage across pre-COVID, COVID and post-COVID windows.
 
 ## Quickstart
 
@@ -105,7 +104,7 @@ streamlit run app.py
 ```
 
 Opens at <http://localhost:8501>. No data setup required — the app ships with
-a small **synthetic demo dataset** (schema-identical to the real results, but
+a small **synthetic demo dataset** (dashboard-compatible with the real results, but
 every value is fabricated) so it renders immediately on a clean clone. A
 "Demo mode" banner appears in the sidebar whenever it's active.
 

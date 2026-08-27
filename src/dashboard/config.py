@@ -97,6 +97,7 @@ HORIZON_PROFILE_CSV = OUT_NOWCAST / "horizon_profile_table.csv"
 HORIZON_BIAS_VARIANCE_CSV = OUT_NOWCAST / "horizon_bias_variance_table.csv"
 POST_COVID_CSV = OUT_NOWCAST / "post_covid_benchmarks_table.csv"
 DM_ALL_CSV = OUT_NOWCAST / "diebold_mariano_table_all_models.csv"
+MCS_CSV = OUT_NOWCAST / "model_confidence_set_table.csv"
 CONTRIB_PARQUET = OUT_NOWCAST / "category_contribs_en_2017_2025.parquet"
 SERIES_CONTRIB_PARQUET = OUT_NOWCAST / "series_contribs_en_2017_2025.parquet"
 CONTRIB_PARQUET_TVP = OUT_NOWCAST / "category_contribs_tvp_2017_2025.parquet"
@@ -114,6 +115,26 @@ RAGGED_EDGE_CSV = OUT_NOWCAST / "ragged_edge_diagnostics" / "info_set_summary.cs
 MZ_CSV = OUT_NOWCAST / "mincer_zarnowitz_table.csv"
 SV_CALIBRATION_CSV = OUT_NOWCAST / "sv_interval_calibration_table.csv"
 REVISION_CSV = OUT_NOWCAST / "dfm_en_forecast_revision.csv"
+RELEASE_BLOCK_STATES_CSV = (
+    OUT_NOWCAST / "release_block_counterfactual_states.csv"
+)
+
+# 2×2 release-block counterfactual (thesis Fig. 8.5). Muted Okabe–Ito
+# qualitative set: steel-blue = both blocks frozen at M1; amber = non-hard
+# complement; teal = hard-activity treatment; ink = observed full update
+# (INK is the Part II colour for realised/observed paths).
+RELEASE_BLOCK_COLORS = {
+    "both_frozen": "#3B6FA0",
+    "other_only": "#D4940A",
+    "hard_only": "#1A8A6C",
+    "full": "#1A2332",
+}
+RELEASE_BLOCK_LABELS = {
+    "both_frozen": "Both blocks frozen",
+    "other_only": "Non-hard block only",
+    "hard_only": "Hard-activity block only",
+    "full": "Observed full update",
+}
 
 # XGB-Full post-COVID robustness check (seed + hyperparameter sensitivity,
 # leave-one-quarter-out jackknife, DM vs. Rolling-AR(1) 40q).
@@ -248,45 +269,44 @@ class ModelSpec:
         self.has_miq = has_miq
 
 
-# Model colours — "twilight garden" harmony: warm rose→orchid DFM arc, cerulean
-# counterpoint, amber bridge, teal + indigo ML accents. Same energy level
-# across models so multi-line charts feel cohesive, not neon.
+# Model colours — lightly pastel publication palette with controlled saturation.
+# Baselines stay neutral, related DFM specifications follow a rose-to-plum arc,
+# and distinct model families retain clear blue, amber, teal and violet accents.
 MODELS: dict[str, ModelSpec] = {
-    "RW": ModelSpec("RW", "Random Walk", "#AEC0D8", "Baselines",
+    "RW": ModelSpec("RW", "Random Walk", "#C4CFDE", "Baselines",
                     _NC / "nowcast_results_rw.csv", False),
-    "AR1": ModelSpec("AR1", "AR(1)", "#6E88A8", "Baselines",
+    "AR1": ModelSpec("AR1", "AR(1)", "#7890A9", "Baselines",
                      _NC / "nowcast_results_ar1.csv", False),
-    "DFM-ifoCAST": ModelSpec("DFM-ifoCAST", "DFM · ifoCAST fixed set", "#E06B82",
+    "DFM-ifoCAST": ModelSpec("DFM-ifoCAST", "DFM · ifoCAST fixed set", "#E78D94",
                              "DFM (A-CD-TPN)", _NC / "nowcast_results_dfm_ifocast.csv", True),
-    "DFM-EN": ModelSpec("DFM-EN", "DFM · EN inputs", "#EC6F8E", "DFM (A-CD-TPN)",
+    "DFM-EN": ModelSpec("DFM-EN", "DFM · EN inputs", "#E06C86", "DFM (A-CD-TPN)",
                         _NC / "nowcast_results_actpn_en_only.csv", True),
-    # Appendix / Accuracy-tab comparison only (PLS+VIP top-30 input set).
-    # Kept out of DM heatmap and other Part II surfaces via APPENDIX_COMPARE_MODELS.
-    "DFM-PLS": ModelSpec("DFM-PLS", "DFM · PLS inputs", "#D96B85", "DFM (A-CD-TPN)",
+    # PLS+VIP top-30 input set.
+    "DFM-PLS": ModelSpec("DFM-PLS", "DFM · PLS inputs", "#CE809C", "DFM (A-CD-TPN)",
                          _NC / "nowcast_results_actpn_pls_only.csv", True),
     "DFM-BlockBalanced": ModelSpec("DFM-BlockBalanced", "DFM · block-balanced k=20",
-                                   "#C44E7A", "DFM (A-CD-TPN)",
+                                   "#B36487", "DFM (A-CD-TPN)",
                                    _NC / "nowcast_results_dfm_blockbalanced.csv", True),
-    "DFM-TVP": ModelSpec("DFM-TVP", "DFM-TVP (COVID-robust)", "#A855C8", "DFM-TVP",
+    "DFM-TVP": ModelSpec("DFM-TVP", "DFM-TVP (COVID-robust)", "#9E77C0", "DFM-TVP",
                          _NC / "nowcast_results_dfm_tvp.csv", True),
-    "DFM-SV-k2": ModelSpec("DFM-SV-k2", "DFM-SV (k=2, integrated, EN)", "#4A8FE7", "DFM-SV",
+    "DFM-SV-k2": ModelSpec("DFM-SV-k2", "DFM-SV (k=2, integrated, EN)", "#6796CB", "DFM-SV",
                            _NC / "nowcast_results_actpn_sv_integrated_k2.csv", True),
-    "combo_equal": ModelSpec("combo_equal", "Equal-weight combo", "#F0AD4E", "Ensemble",
+    "combo_equal": ModelSpec("combo_equal", "Equal-weight combo", "#DFA94F", "Ensemble",
                              _NC / "nowcast_path_combo_equal.csv", True),
-    "XGB-Full": ModelSpec("XGB-Full", "XGBoost (Full)", "#2DB896", "Machine learning",
+    "XGB-Full": ModelSpec("XGB-Full", "XGBoost (Full)", "#55AA91", "Machine learning",
                           _NC / "nowcast_results_xgb_full.csv", True),
-    "MLP-Factor": ModelSpec("MLP-Factor", "MLP · factor-augmented", "#6B5CE7",
+    "MLP-Factor": ModelSpec("MLP-Factor", "MLP · factor-augmented", "#7E71CB",
                             "Machine learning",
                             _NC / "nowcast_results_mlp_factor.csv", True),
 }
 
 # Light badge tints paired with each accent (bg, fg).
 MODEL_BADGE: dict[str, tuple[str, str]] = {
-    "DFM-EN": ("#FDE8EE", "#B83562"),
-    "DFM-TVP": ("#F3E5F9", "#7B2D9E"),
-    "DFM-SV-k2": ("#E6F1FD", "#2563B8"),
-    "XGB-Full": ("#E0F7F2", "#0D7A62"),
-    "MLP-Factor": ("#EDEAFE", "#4C3DB8"),
+    "DFM-EN": ("#FCE8EE", "#A93455"),
+    "DFM-TVP": ("#F2EAF7", "#674086"),
+    "DFM-SV-k2": ("#E9F1FA", "#32649E"),
+    "XGB-Full": ("#E5F5F0", "#20745C"),
+    "MLP-Factor": ("#ECEAFE", "#4D40A2"),
 }
 
 MODEL_ORDER = [
@@ -295,10 +315,6 @@ MODEL_ORDER = [
     "DFM-TVP", "DFM-SV-k2", "combo_equal",
     "XGB-Full", "MLP-Factor",
 ]
-
-# Surfaced only on Accuracy & model paths (RMSE-by-regime, paths, ranking).
-# Excluded from DM / specs / headline horse-race surfaces.
-APPENDIX_COMPARE_MODELS = frozenset({"DFM-PLS"})
 
 FAMILY_ORDER = ["Baselines", "DFM (A-CD-TPN)", "DFM-TVP", "DFM-SV",
                 "Ensemble", "Machine learning"]
