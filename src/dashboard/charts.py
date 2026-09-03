@@ -326,8 +326,10 @@ def bias_variance_decomposition(df: pd.DataFrame, models: list[str],
     if not shown:
         return go.Figure()
 
+    n = len(shown)
     fig = make_subplots(
-        rows=1, cols=len(shown), shared_yaxes=True, horizontal_spacing=0.045,
+        rows=1, cols=n, shared_yaxes=True,
+        horizontal_spacing=0.03 if n >= 6 else 0.045,
         subplot_titles=[f"<b>{m}</b>" for m in shown],
     )
     month_order = ["M1", "M2", "M3"]
@@ -619,23 +621,23 @@ def xgb_sensitivity_bars(
         line=dict(color=ar_color, width=2, dash="dot"),
         name=f"Rolling-AR(1) ({rolling_ar1:.2f})", showlegend=True,
     ))
-    fig.add_trace(go.Scatter(
-        x=[None], y=[None], mode="markers",
-        marker=dict(size=11, color=dfm_band, symbol="square",
-                    line=dict(width=1, color=C.SUBTLE)),
-        name=f"DFM band ({dfm_range[0]:.2f}–{dfm_range[1]:.2f})", showlegend=True,
-    ))
-
     lo, hi = dfm_range
-    fig.add_vrect(
-        x0=lo, x1=hi, fillcolor=dfm_band, opacity=0.28, line_width=0,
-        layer="below",
-    )
-    fig.add_vline(
-        x=best_dfm[1],
-        line=dict(color=C.SUBTLE, width=1.2, dash="dash"),
-        layer="below",
-    )
+    if np.isfinite(lo) and np.isfinite(hi):
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None], mode="markers",
+            marker=dict(size=11, color=dfm_band, symbol="square",
+                        line=dict(width=1, color=C.SUBTLE)),
+            name=f"DFM band ({lo:.2f}–{hi:.2f})", showlegend=True,
+        ))
+        fig.add_vrect(
+            x0=lo, x1=hi, fillcolor=dfm_band, opacity=0.28, line_width=0,
+            layer="below",
+        )
+        fig.add_vline(
+            x=best_dfm[1],
+            line=dict(color=C.SUBTLE, width=1.2, dash="dash"),
+            layer="below",
+        )
     fig.add_vline(
         x=rolling_ar1,
         line=dict(color=ar_color, width=1.6, dash="dot"),
@@ -1228,11 +1230,14 @@ def deviation_bars(share: pd.DataFrame, uni: pd.Series, title: str,
     message as a lift ratio but in directly readable percentage points.
     """
     _SHORT = {
-        "EN (raw)": "EN", "EN (smoothed)": "EN sm.",
-        "Block-balanced (k=20)": "Block-bal.", "PLS": "PLS",
+        "EN (raw)": "Elastic net",
+        "Block-balanced (k=20)": "Block-bal.",
+        "PLS": "PLS",
         "XGBoost (SHAP)": "XGBoost",
-        "ifoCAST (fixed)": "ifoCAST", "EN-only": "EN-only",
+        "ifoCAST (fixed)": "ifoCAST",
+        "EN-only": "EN-only",
         "ifoCAST": "ifoCAST",
+        "Elastic net": "Elastic net",
     }
     methods = list(share.columns)
     cats = [c for c in C.CATEGORY_ORDER if c in share.index]
@@ -1333,12 +1338,20 @@ def regime_rotation_bars(long: pd.DataFrame, uni: pd.Series,
     methods = [m for m in sub["method"].unique()]
     regimes = [r for r in C.REGIMES if r in set(sub["regime"])]
 
+    _METHOD_DISPLAY = {
+        "EN": "Elastic net",
+        "Block-balanced": "Block-balanced",
+        "PLS": "PLS",
+        "XGBoost (SHAP)": "XGBoost (SHAP)",
+    }
+    display = [_METHOD_DISPLAY.get(m, m) for m in methods]
+
     fig = go.Figure()
     for r in regimes:
         vals = [float(sub[(sub["method"] == m) & (sub["regime"] == r)]["share"]
                       .sum()) * 100 for m in methods]
         fig.add_trace(go.Bar(
-            x=methods, y=vals, name=r, marker_color=C.REGIME_COLORS[r],
+            x=display, y=vals, name=r, marker_color=C.REGIME_COLORS[r],
             text=[f"{v:.0f}%" for v in vals], textposition="outside",
             textfont=dict(size=10, color=C.SUBTLE), cliponaxis=False,
             hovertemplate=("<b>%{x}</b> · " + r +
@@ -1408,7 +1421,7 @@ def regime_share_bars(long: pd.DataFrame, methods: list[str]) -> go.Figure:
     """Horizontal grouped bars: category mass share (%) by method, one panel per regime.
 
     Each panel is one economic regime; bars within a panel compare methods
-    side-by-side so the supervisor reads shift across regimes horizontally.
+    side by side so shifts across regimes are read horizontally.
     """
     regimes = list(C.REGIMES)
     method_colors = {
@@ -1417,6 +1430,13 @@ def regime_share_bars(long: pd.DataFrame, methods: list[str]) -> go.Figure:
         "PLS":            "#7FB7A6",
         "XGBoost (SHAP)": "#3E9B73",
         "ifoCAST (fixed)": "#C9617F",
+    }
+    method_display = {
+        "EN": "Elastic net",
+        "Block-balanced": "Block-balanced",
+        "PLS": "PLS",
+        "XGBoost (SHAP)": "XGBoost (SHAP)",
+        "ifoCAST (fixed)": "ifoCAST (fixed)",
     }
     cats     = [c for c in C.CATEGORY_ORDER]
     cat_lbl  = [_cat_display(c) for c in cats]
@@ -1437,7 +1457,7 @@ def regime_share_bars(long: pd.DataFrame, methods: list[str]) -> go.Figure:
                 x=sub.values * 100,   # convert to percent
                 y=cat_lbl,
                 orientation="h",
-                name=method,
+                name=method_display.get(method, method),
                 marker=dict(
                     color=method_colors.get(method, C.SUBTLE),
                     line=dict(color=C.PAPER, width=0.6),
@@ -1445,7 +1465,7 @@ def regime_share_bars(long: pd.DataFrame, methods: list[str]) -> go.Figure:
                 showlegend=(col == 1),
                 legendgroup=method,
                 hovertemplate=(
-                    "<b>" + method + "</b> · " + regime +
+                    "<b>" + method_display.get(method, method) + "</b> · " + regime +
                     "<br>%{y}: %{x:.1f}% of selected set<extra></extra>"
                 ),
             ), row=1, col=col)

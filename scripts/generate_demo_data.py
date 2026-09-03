@@ -503,7 +503,7 @@ def write_release_block_states(frames: dict[str, pd.DataFrame]) -> None:
 def write_factor_loadings() -> None:
     rows = []
     for q in EVAL_QUARTERS:
-        origin = f"{q.year:04d}-{q.month + 2:02d}"
+        origin = pd.Period(q, freq="Q").asfreq("M", how="end").strftime("%Y-%m")
         for factor in (1, 2):
             shares = RNG.dirichlet(np.ones(len(C.FACTOR_LOADING_CATEGORIES)))
             for cat, share in zip(C.FACTOR_LOADING_CATEGORIES, shares):

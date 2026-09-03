@@ -1,21 +1,20 @@
 # Data directory
 
-The dashboard resolves its data directory in this order (see
+The dashboard picks a data directory in this order (see
 [`src/dashboard/config.py`](../src/dashboard/config.py)):
 
-1. **`DASHBOARD_DATA_DIR` environment variable** — an absolute path to a
-   directory with the same layout as `demo/` below.
-2. **`data/real/`** — if you have your own results, drop them here. This
-   folder is gitignored on purpose; it never gets committed.
-3. **`data/demo/`** — the synthetic sample bundled with the repo. Used
-   automatically if neither of the above exists, so the app always runs.
+1. **`DASHBOARD_DATA_DIR`** — an absolute path with the same layout as `demo/`
+   below.
+2. **`data/real/`** — gitignored drop-in for your own results.
+3. **`data/demo/`** — the synthetic sample bundled with the repo. Used if
+   neither of the above exists, so a clean clone always runs.
 
-## Layout expected under `real/` (or your `DASHBOARD_DATA_DIR` target)
+## Layout expected under `real/` (or `DASHBOARD_DATA_DIR`)
 
 ```text
 <data_dir>/
 ├── metadata/
-│   └── data_dict.csv                  # id, name, category
+│   └── data_dict.csv
 ├── indicator_selection/
 │   ├── gdp_target.csv
 │   ├── selection_matrix_blockbalanced_k20.csv
@@ -36,7 +35,7 @@ The dashboard resolves its data directory in this order (see
     ├── release_block_counterfactual_states.csv
     ├── factor_loading_m3_panel.csv
     ├── xgb_shap_importance.csv
-    ├── nowcast_results_*.csv          # one file per model, see config.py MODELS
+    ├── nowcast_results_*.csv
     ├── nowcast_path_combo_equal.csv
     ├── category_contribs_*.parquet
     ├── series_contribs_*.parquet
@@ -47,32 +46,28 @@ The dashboard resolves its data directory in this order (see
         └── xgb_sensitivity_dm_vs_rolling_ar1.txt
 ```
 
-## Regenerating the demo sample
+## Rebuild the demo sample
 
 ```bash
 python3 scripts/generate_demo_data.py
 ```
 
-This rebuilds `data/demo/` from a seeded random-number generator — no real
-data required. The script explicitly targets `data/demo/`, even when
-`data/real/` exists. See [`docs/DATA.md`](../docs/DATA.md) for why the real
-results aren't in this repository.
+This always writes to `data/demo/`, even if `data/real/` exists. See
+[`docs/DATA.md`](../docs/DATA.md) for why the real results are not in git.
 
-## Staging real data locally
+## Stage real outputs locally
 
-Point the staging script at the research pipeline root containing `outputs/`
-and `data/metadata/`:
+Point the staging script at the pipeline root (the folder that contains
+`outputs/` and `data/metadata/`):
 
 ```bash
-python3 scripts/stage_real_data.py --source /path/to/pipeline-root
+python3 scripts/stage_real_data.py --source /path/to/german-gdp-nowcasting
 ```
 
-## Deploying with real data (without committing it anywhere public)
+## Deploy with real data without committing it
 
-`src/dashboard/bootstrap.py` can sync `data/real/` at process startup from a
-*separate, private, data-only* GitHub repo, authenticated with a
-fine-grained, read-only token supplied via Streamlit secrets — see
-[`.streamlit/secrets.toml.example`](../.streamlit/secrets.toml.example). The
-real data and its access token never touch this codebase; only the
-deployment's own secrets store sees them. No secrets configured → no-op →
-demo mode, exactly like a plain `git clone`.
+[`src/dashboard/bootstrap.py`](../src/dashboard/bootstrap.py) can fill
+`data/real/` at startup from a private data-only GitHub repo. Authenticate
+with a fine-grained, read-only token via Streamlit secrets — see
+[`.streamlit/secrets.toml.example`](../.streamlit/secrets.toml.example).
+If no secrets are set, the app stays in demo mode.

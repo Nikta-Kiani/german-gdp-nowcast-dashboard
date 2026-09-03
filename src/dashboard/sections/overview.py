@@ -1,4 +1,4 @@
-"""Landing page: thesis framing, the two-part workflow and headline numbers."""
+"""Landing page: thesis framing, the two-part design and headline numbers."""
 
 from __future__ import annotations
 
@@ -10,41 +10,41 @@ from .. import theme as T
 
 def render() -> None:
     T.hero(
-        "Nowcasting & Indicator Selection in a Data-Rich Environment",
-        "Indicator selection and pseudo-real-time nowcasting, evaluated on "
-        "first-release GDP growth from 2011Q1 to 2025Q4.",
-        eyebrow="M.Sc. Thesis · Statistics & Data Science",
+        "Nowcasting and Indicator Selection in a Data-Rich Environment",
+        "Indicator selection and pseudo-real-time nowcasting of first-release "
+        "German GDP growth, 2011Q1–2025Q4.",
+        eyebrow="M.Sc. thesis · Statistics and Data Science",
     )
 
     T.stat_cards([
         ("585", "candidate indicators"),
         ("180", "monthly origins"),
         ("60", "evaluation quarters"),
-        ("11", "headline candidates"),
-        ("3", "calendar-defined regimes"),
+        ("11", "headline models"),
+        ("3", "evaluation regimes"),
     ])
 
     T.eyebrow("What the thesis finds")
-    st.markdown("### Three results organise the dashboard")
+    st.markdown("### Three findings")
     findings = st.columns(3, gap="large")
     with findings[0]:
-        st.markdown("**Selection agrees on categories, not series**")
+        st.markdown("**Selectors agree on categories, not series**")
         st.markdown(
-            "All four statistical signals favour delayed hard-activity data, "
-            "but their series-level rank correlations remain below **0.5**."
+            "All four statistical signals concentrate on delayed hard-activity "
+            "data, but series-level rank correlations stay in **0.28–0.46**."
         )
     with findings[1]:
-        st.markdown("**Performance changes with the regime**")
+        st.markdown("**The monthly panel helps in a shock**")
         st.markdown(
-            "Monthly factor models contain the COVID swings better than quarterly "
-            "AR benchmarks. After 2022, short-memory and adaptive forecasts lead "
-            "in point estimates."
+            "Factor models contain the COVID swings better than quarterly "
+            "autoregressions. After 2022, short-memory and adaptive forecasts "
+            "lead in point estimates."
         )
     with findings[2]:
-        st.markdown("**The sample does not identify a champion**")
+        st.markdown("**The sample does not pick a champion**")
         st.markdown(
             "The equal-weight DFM combination has the lowest full-sample RMSFE, "
-            "but the 90% model confidence set retains all eleven candidates."
+            "but the 90% model confidence set retains all eleven headline models."
         )
 
     T.callout(
@@ -63,11 +63,11 @@ def render() -> None:
         ("pre-COVID", "2011Q1 – 2019Q4",
          "The pre-pandemic evaluation window (36 quarters)."),
         ("COVID", "2020Q1 – 2021Q4",
-         "The pandemic shock window (8 quarters); squared-error metrics are "
-         "dominated by a few extreme misses."),
+         "The pandemic shock (8 quarters). Squared-error metrics are dominated "
+         "by a few extreme misses."),
         ("post-COVID", "2022Q1 – 2025Q4",
-         "The low-growth post-2022 window (16 quarters); estimates remain "
-         "sensitive to a few observations."),
+         "Low-growth stagnation (16 quarters). Estimates remain sensitive to "
+         "a few observations."),
     ]
     for c, (name, span, desc) in zip(rc, regimes):
         with c:
@@ -80,7 +80,7 @@ def render() -> None:
             )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-    T.eyebrow("Methodology at a glance")
+    T.eyebrow("Design")
     st.markdown("### One protocol, two linked questions")
     st.markdown(
         "Part I asks which indicators are associated with **completed-quarter** "

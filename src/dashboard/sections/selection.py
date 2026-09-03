@@ -2,12 +2,11 @@
 
 Every method exposes a different native signal (binary inclusion for the linear
 screens, mean |SHAP| for XGBoost, fixed membership for ifoCAST). They are
-harmonised onto a common per-series importance mass and
-read two ways: raw *category mass share* (composition of the selected set) and
-the *deviation from availability* — selected share minus the category's share
-of the candidate universe, in percentage points. The deviation view matters
-because the universe is extremely survey-heavy, so raw shares partly echo what
-exists rather than what a method prefers.
+harmonised onto a common per-series importance mass and read two ways: raw
+category mass share, and the deviation from availability (selected share minus
+the category's share of the candidate universe). The second view matters
+because the universe is survey-heavy, so raw shares partly echo what exists
+rather than what a method prefers.
 """
 
 from __future__ import annotations
@@ -45,32 +44,30 @@ def render() -> None:
         _ragged_edge()
 
 
-# --------------------------------------------------------------------------- #
-# Tab 1 — structural shift through time
-# --------------------------------------------------------------------------- #
 def _structural_shift() -> None:
     st.markdown("### Time-varying category emphasis")
     methods = [m for m in D.available_methods()
                if C.SELECTION_METHODS[m]["kind"] != "fixed"]
+    default = "EN (raw)" if "EN (raw)" in methods else 0
     method = st.selectbox(
         "Method", methods,
-        index=methods.index("EN (raw)") if "EN (raw)" in methods else 0,
-        help="Elastic Net is the primary screen (COVID-weighted, capped at 60 "
-             "indicators per origin); XGBoost cross-checks it with non-linear "
-             "importances.",
+        index=methods.index(default) if isinstance(default, str) else default,
+        format_func=C.selection_label,
+        help="Elastic net is the primary screen (COVID-weighted, capped at 60 "
+             "indicators per origin). XGBoost is a non-linear cross-check.",
     )
 
     share = D.category_share_over_time_any(method)
     if share.empty:
-        st.warning("Time-varying selection unavailable for this method.")
+        st.warning("Time-varying selection is unavailable for this method.")
         return
 
     soft_hard = D.soft_hard_share_over_time(method)
     st.plotly_chart(
         charts.soft_hard_lines(
             soft_hard, D.universe_soft_hard(),
-            title=f"{method} — soft vs hard data emphasis over time"),
-        width='stretch')
+            title=f"{C.selection_label(method)} — soft vs hard data over time"),
+        width="stretch")
     T.callout(
         "<b>Thesis finding.</b> Every statistical method puts most of its mass "
         "on delayed hard activity: 65–100% across methods and regimes, versus "
@@ -89,7 +86,7 @@ def _structural_shift() -> None:
         )
 
     with st.expander("Full 11-category composition (stacked area)"):
-        st.plotly_chart(charts.structural_shift_area(share), width='stretch')
+        st.plotly_chart(charts.structural_shift_area(share), width="stretch")
         st.caption(
             "Raw composition of the selected set (bands sum to 100%). The wide "
             "survey band partly reflects the survey-heavy universe; use the "
@@ -102,25 +99,23 @@ def _structural_shift() -> None:
                 continue
             sh = D.soft_hard_share_over_time(m)
             if sh.empty:
-                st.info(f"{m} importances unavailable.")
+                st.info(f"{C.selection_label(m)} importances unavailable.")
                 continue
             st.plotly_chart(
                 charts.soft_hard_lines(
                     sh, D.universe_soft_hard(),
-                    title=f"{m} — soft vs hard emphasis ({note})", height=340),
-                width='stretch')
+                    title=f"{C.selection_label(m)} — soft vs hard emphasis ({note})",
+                    height=340),
+                width="stretch")
 
 
-# --------------------------------------------------------------------------- #
-# Tab 2 — regime switching
-# --------------------------------------------------------------------------- #
 def _regime_switching() -> None:
     st.markdown("### Regime-level category emphasis")
     T.callout(
         "Regime averages summarise composition; they do not establish a break. "
-        "The hard-data concentration is stable, while the apparent COVID "
-        "rotation toward surveys is brief within EN and is not reproduced by "
-        "the other methods."
+        "The hard-data concentration is stable. The apparent COVID rotation "
+        "toward surveys is brief within the elastic net and is not reproduced "
+        "by the other methods."
     )
     long = D.regime_soft_hard()
     if long.empty:
@@ -128,12 +123,12 @@ def _regime_switching() -> None:
     else:
         st.plotly_chart(
             charts.regime_rotation_bars(long, D.universe_soft_hard()),
-            width='stretch',
+            width="stretch",
         )
         T.callout(
-            "Compare levels with the dotted universe shares and movements across "
-            "panels separately. The shared result is the hard-data level; the "
-            "regime-to-regime movement is method-dependent."
+            "Compare levels with the dotted universe shares, and movements "
+            "across panels, separately. The shared result is the hard-data "
+            "level; the regime-to-regime movement is method-dependent."
         )
 
     st.markdown("#### Full category composition by regime")
@@ -142,56 +137,60 @@ def _regime_switching() -> None:
         st.info("Regime composition unavailable.")
     else:
         methods = full["method"].unique().tolist()
-        st.plotly_chart(charts.regime_share_bars(full, methods), width='stretch')
+        st.plotly_chart(charts.regime_share_bars(full, methods), width="stretch")
         st.caption(
-            "Shares of selected mass before availability adjustment — read "
+            "Shares of selected mass before availability adjustment. Read "
             "shifts across panels (regimes) rather than the absolute level of "
             "the survey bar, which reflects the survey-heavy universe."
         )
 
 
-# --------------------------------------------------------------------------- #
-# Tab 3 — cross-method agreement
-# --------------------------------------------------------------------------- #
+def _relabel_agreement(df):
+    """Replace internal method keys with thesis-facing labels."""
+    mapper = {k: C.selection_label(k) for k in df.index}
+    return df.rename(index=mapper, columns=mapper)
+
+
 def _consensus() -> None:
     st.markdown("### Method agreement diagnostics")
     summary = D.en_stability_summary()
     if summary:
         T.stat_cards([
-            (f"{summary['persistent_series']}", "EN series selected at every origin"),
-            (f"{summary['mean_ifocast_jaccard']:.3f}", "mean EN–ifoCAST Jaccard"),
+            (f"{summary['persistent_series']}",
+             "elastic-net series selected at every origin"),
+            (f"{summary['mean_ifocast_jaccard']:.3f}",
+             "mean EN–ifoCAST Jaccard"),
             (f"{summary['n_ifocast']}", "active ifoCAST predictors"),
         ])
 
     df = D.cross_method_agreement()
     st.plotly_chart(
         charts.agreement_heatmap(
-            df, "Cross-method agreement — Spearman rank correlation",
+            _relabel_agreement(df),
+            "Cross-method agreement — Spearman rank correlation",
             "Spearman ρ"),
-        width='stretch')
+        width="stretch")
     T.callout(
-        "<b>Thesis finding.</b> Data-driven rank correlations remain below 0.5, "
-        "and correlations with the fixed ifoCAST set are lower still (0.14–0.23). "
-        "Methods agree on the hard-activity block, not on a universal series list."
+        "<b>Thesis finding.</b> Data-driven rank correlations remain in "
+        "0.28–0.46, and correlations with the fixed ifoCAST set are lower "
+        "still (0.14–0.23). Methods agree on the hard-activity block, not on "
+        "a universal series list."
     )
 
     with st.expander("Exploratory top-20 overlap"):
         jaccard = D.method_overlap_jaccard(top_n=20)
         st.plotly_chart(
             charts.agreement_heatmap(
-                jaccard,
+                _relabel_agreement(jaccard),
                 "Exploratory Jaccard overlap of aggregate top-20 indicators",
                 "Jaccard"),
-            width='stretch')
+            width="stretch")
         st.caption(
             "This dashboard-only diagnostic compares aggregate top-20 lists. "
-            "It is not the thesis' mean per-origin EN–ifoCAST Jaccard statistic."
+            "It is not the thesis mean per-origin EN–ifoCAST Jaccard statistic."
         )
 
 
-# --------------------------------------------------------------------------- #
-# Tab 4 — ragged edge
-# --------------------------------------------------------------------------- #
 def _ragged_edge() -> None:
     st.markdown("### Timing and predictive content answer different questions")
     df = D.load_ragged_edge()
@@ -212,7 +211,7 @@ def _ragged_edge() -> None:
 
     mat = D.publag_category_matrix()
     if not mat.empty:
-        st.plotly_chart(charts.publag_composition(mat), width='stretch')
+        st.plotly_chart(charts.publag_composition(mat), width="stretch")
 
     T.callout(
         "Part I scores association with <b>completed-quarter</b> growth and does "

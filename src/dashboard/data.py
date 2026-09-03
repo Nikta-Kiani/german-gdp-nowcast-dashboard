@@ -300,8 +300,7 @@ def _horizon_bias_variance_from_path(key: str) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_horizon_profile() -> pd.DataFrame:
     df = pd.read_csv(C.HORIZON_PROFILE_CSV)
-    # The canonical table predates DFM-PLS's promotion into the headline
-    # horse race; fill any missing DFM path from the saved nowcast file.
+    # The stored table may omit DFM-PLS; fill the path from the saved nowcast file.
     missing = [
         key for key in ("DFM-PLS",)
         if key not in set(df["model"]) and C.MODELS[key].file.exists()

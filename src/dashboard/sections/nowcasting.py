@@ -51,18 +51,10 @@ def _accuracy_and_paths() -> None:
     full_window_order = full_acc["model"].tolist()
 
     st.markdown("### Predictive accuracy by economic regime")
-    regimes = st.multiselect(
-        "Regimes", list(C.REGIMES), default=list(C.REGIMES),
-        help="Compare how the model ranking changes from calm to crisis.",
-    )
-    models_acc = st.multiselect(
-        "Models", avail, default=avail,
-        format_func=C.model_label,
-    )
-    if regimes and models_acc:
+    if not rmsfe.empty and avail:
         st.plotly_chart(
             charts.rmsfe_regime_bars(
-                rmsfe, models_acc, regimes, full_window_order,
+                rmsfe, avail, list(C.REGIMES), full_window_order,
             ),
             width='stretch',
         )
@@ -70,22 +62,21 @@ def _accuracy_and_paths() -> None:
         "Model rankings vary by regime; the COVID window inflates squared-error "
         "metrics for all models. Compare models within each regime panel "
         "rather than treating a single ordering as stable across subsamples. "
-        "**DFM · PLS inputs** is an appendix input-set sensitivity check "
-        "(PLS+VIP top-30), not part of the headline horse-race."
+        "The eleven headline models are the four DFM input-set variants "
+        "(including DFM-PLS), DFM-TVP, DFM-SV, the equal-weight combination, "
+        "XGB-Full, MLP-Factor, the expanding AR(1) and the random walk."
     )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
 
     st.markdown("### Compare model nowcast paths")
     st.markdown(
-        "Pick any set of models to overlay their quarterly nowcasts against "
-        "realised GDP growth. Colours stay tied to each model family."
+        "Overlay quarterly nowcasts against realised GDP growth. Default "
+        "selection is the full-sample combination, DFM-EN, DFM-SV and the "
+        "expanding AR(1)."
     )
     default_paths = [
-        m for m in [
-            "DFM-ifoCAST", "DFM-EN", "DFM-PLS", "DFM-TVP",
-            "XGB-Full", "MLP-Factor", "AR1",
-        ]
+        m for m in ["combo_equal", "DFM-EN", "DFM-SV-k2", "AR1"]
         if m in avail
     ]
     models_ts = st.multiselect(
@@ -112,8 +103,8 @@ def _accuracy_and_paths() -> None:
         '<div class="rank-caption">Aggregate M3 performance over 2011Q1–2025Q4 '
         "(60 quarters). Lower RMSE and MAE indicate better accuracy; RMSE "
         "penalises the large 2020 misses more heavily than MAE. "
-        "<b>Bias</b> is the mean signed error (positive = systematic "
-        "over-prediction of growth).</div>",
+        "<b>Bias</b> is the mean signed error (positive = the nowcast exceeded "
+        "realised growth).</div>",
         unsafe_allow_html=True,
     )
     if not full_acc.empty:
@@ -167,8 +158,8 @@ def _horizon() -> None:
     bv = D.load_horizon_bias_variance()
     if bv.empty:
         st.info(
-            "Bias–variance table unavailable — run "
-            "`scripts/run_horizon_bias_variance.py`."
+            "Bias–variance table is not in the current data directory. "
+            "Stage the thesis outputs as described in data/README.md."
         )
     elif picked:
         st.plotly_chart(charts.bias_variance_decomposition(bv, picked, regime),
@@ -185,7 +176,10 @@ def _horizon() -> None:
     st.markdown("### Which release block carries the post-2022 change?")
     block = D.load_release_block_states()
     if block.empty:
-        st.info("Release-block counterfactual unavailable.")
+        st.info(
+            "Release-block counterfactual is not in the current data directory. "
+            "Stage the thesis outputs as described in data/README.md."
+        )
     else:
         st.plotly_chart(
             charts.release_block_counterfactual(block),
@@ -204,7 +198,10 @@ def _horizon() -> None:
     st.markdown("### Quarter-by-quarter revision path (DFM-EN)")
     rev = D.load_revision_path()
     if rev.empty:
-        st.info("Revision diagnostics unavailable.")
+        st.info(
+            "Revision diagnostics are not in the current data directory. "
+            "Stage the thesis outputs as described in data/README.md."
+        )
     else:
         log_y = st.toggle(
             "Log y-axis", value=False, key="rev_log",
@@ -260,8 +257,8 @@ def _xgb_sensitivity(post_covid_df) -> None:
 
     if sens.empty:
         st.info(
-            "Sensitivity cache unavailable — run "
-            "`outputs/nowcasting/_scratch/xgb_sensitivity.py`."
+            "XGBoost sensitivity files are not in the current data directory. "
+            "Stage the thesis outputs as described in data/README.md."
         )
         return
 
@@ -270,24 +267,34 @@ def _xgb_sensitivity(post_covid_df) -> None:
         "DFM-TVP", "DFM-SV-k2",
     ]
     regime_rmsfe = D.rmsfe_by_regime()
-    dfm_row = regime_rmsfe[
-        regime_rmsfe["model"].isin(dfm_keys)
-        & regime_rmsfe["regime"].eq("post-COVID")
-    ]
-    dfm_vals = dfm_row.set_index("model")["rmsfe"]
-    dfm_range = (float(dfm_vals.min()), float(dfm_vals.max()))
-    best_dfm = (str(dfm_vals.idxmin()), float(dfm_vals.min()))
+    dfm_range = (np.nan, np.nan)
+    best_dfm = ("", np.nan)
+    if not regime_rmsfe.empty:
+        post_covid_dfm = regime_rmsfe.loc[
+            regime_rmsfe["model"].isin(dfm_keys)
+            & regime_rmsfe["regime"].eq("post-COVID"),
+            ["model", "rmsfe"],
+        ].dropna(subset=["rmsfe"])
+        if not post_covid_dfm.empty:
+            rmsfe_by_model = post_covid_dfm.set_index("model")["rmsfe"]
+            dfm_range = (float(rmsfe_by_model.min()), float(rmsfe_by_model.max()))
+            best_dfm = (str(rmsfe_by_model.idxmin()), float(rmsfe_by_model.min()))
     ar1_row = post_covid_df[post_covid_df["model"] == "Rolling-AR(1) 40q"]
     rolling_ar1 = float(ar1_row["post-COVID_rmsfe"].iloc[0]) if not ar1_row.empty else np.nan
 
     seed_vals = sens.loc[sens["category"] == "Seed", "rmsfe_post"]
     hp_vals = sens.loc[sens["category"] == "Hyperparameter", "rmsfe_post"]
-    cards = [
-        (f"{seed_vals.min():.2f}–{seed_vals.max():.2f} pp",
-         "post-COVID RMSFE range across 5 random seeds"),
-        (f"{hp_vals.min():.2f}–{hp_vals.max():.2f} pp",
-         "range across 6 hyperparameter perturbations"),
-    ]
+    cards = []
+    if not seed_vals.empty:
+        cards.append((
+            f"{seed_vals.min():.2f}–{seed_vals.max():.2f} pp",
+            "post-COVID RMSFE range across 5 random seeds",
+        ))
+    if not hp_vals.empty:
+        cards.append((
+            f"{hp_vals.min():.2f}–{hp_vals.max():.2f} pp",
+            "range across 6 hyperparameter perturbations",
+        ))
     if not jk.empty:
         cards.append((
             f"{jk['rmsfe_excl_quarter'].min():.2f}–{jk['rmsfe_excl_quarter'].max():.2f} pp",
@@ -296,7 +303,8 @@ def _xgb_sensitivity(post_covid_df) -> None:
     if dm is not None:
         cards.append((f"p = {dm['p_value']:.2f}",
                       "DM test vs. Rolling-AR(1) 40q (post-COVID)"))
-    T.stat_cards(cards)
+    if cards:
+        T.stat_cards(cards)
 
     if not np.isnan(rolling_ar1):
         st.plotly_chart(
@@ -313,11 +321,23 @@ def _xgb_sensitivity(post_covid_df) -> None:
             "gap over that naive benchmark is <b>not statistically "
             "significant</b>."
         )
+    seed_note = ""
+    if not seed_vals.empty and not hp_vals.empty:
+        seed_note = (
+            f"Across seeds, post-COVID RMSFE ranges from "
+            f"{seed_vals.min():.2f} to {seed_vals.max():.2f} pp; hyperparameter "
+            f"changes span {hp_vals.min():.2f}–{hp_vals.max():.2f} pp. "
+            "The point estimate is therefore seed-sensitive."
+        )
+    elif not seed_vals.empty:
+        seed_note = (
+            f"Across seeds, post-COVID RMSFE ranges from "
+            f"{seed_vals.min():.2f} to {seed_vals.max():.2f} pp. "
+            "The point estimate is therefore seed-sensitive."
+        )
     T.callout(
-        "<b>Cautious reading.</b> Across seeds, post-COVID RMSFE ranges from "
-        f"{seed_vals.min():.2f} to {seed_vals.max():.2f} pp; hyperparameter "
-        f"changes span {hp_vals.min():.2f}–{hp_vals.max():.2f} pp. "
-        "The point estimate is therefore seed-sensitive."
+        "<b>Cautious reading.</b> "
+        f"{seed_note}"
         f"{dm_text} "
         "XGB-Full is a useful non-linear benchmark, not a demonstrated "
         "post-COVID winner."
@@ -350,9 +370,8 @@ def _decomposition() -> None:
     cat_df = D.load_factor_loading_categories()
     if cat_df.empty:
         st.warning(
-            "Factor-loading cache unavailable. Run "
-            "`python scripts/run_factor_loading_figure.py` in "
-            "`04_nowcasting_dfm` to build `factor_loading_m3_panel.csv`."
+            "Factor-loading cache is not in the current data directory. "
+            "Stage the thesis outputs as described in data/README.md."
         )
     else:
         st.plotly_chart(
@@ -396,16 +415,14 @@ def _decomposition() -> None:
         "the remainder (`nowcast − intercept`) across indicator categories, in "
         "proportion to each factor's Stage-1 |loadings|. This is a descriptive "
         "allocation of the *fitted nowcast*, not a sequential news decomposition. "
-        "Ifo's public ifoCAST, by contrast, attributes the *change between two "
+        "The ifoCAST news decomposition, by contrast, attributes the *change between two "
         "successive forecasts* to incoming data groups."
     )
     df_tvp = D.load_contributions_tvp()
     if df_tvp.empty:
         st.warning(
-            "DFM-TVP contribution cache unavailable. Run "
-            "`python scripts/run_all_thesis_figures.py --rebuild-contrib-tvp` "
-            "in `04_nowcasting_dfm` to build "
-            "`category_contribs_tvp_2017_2025.parquet`."
+            "DFM-TVP contribution cache is not in the current data directory. "
+            "Stage the thesis outputs as described in data/README.md."
         )
     else:
         tc1, tc2 = st.columns([2, 1])
@@ -511,9 +528,9 @@ def _decomposition() -> None:
         )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
-    st.markdown("#### DFM-BlockBalanced nowcast decomposition — what moved the forecast?")
+    st.markdown("#### DFM-block-balanced nowcast decomposition — what moved the forecast?")
     st.markdown(
-        "The **DFM-BlockBalanced** (k=20, ≥1 indicator per category) nowcast uses "
+        "The **DFM-block-balanced** (k=20, ≥1 indicator per category) nowcast uses "
         "the identical fixed-loading DFM and predicted-level attribution as "
         "DFM-EN above, so there is no intercept line. The difference from DFM-EN "
         "is entirely in **which indicators are selected**: a parsimonious, "
@@ -522,17 +539,15 @@ def _decomposition() -> None:
     df_bb = D.load_contributions_blockbalanced()
     if df_bb.empty:
         st.warning(
-            "DFM-BlockBalanced contribution cache unavailable. Run "
-            "`python scripts/run_all_thesis_figures.py --rebuild-contrib-bb` "
-            "in `04_nowcasting_dfm` to build "
-            "`category_contribs_blockbalanced_2017_2025.parquet`."
+            "DFM-block-balanced contribution cache is not in the current data "
+            "directory. Stage the thesis outputs as described in data/README.md."
         )
     else:
         bc1, bc2 = st.columns([2, 1])
         with bc1:
             bb_period = st.selectbox(
                 "Period", list(C.CONTRIB_PERIODS),
-                help="The DFM-BlockBalanced decomposition cache spans 2017–2025.",
+                help="The DFM-block-balanced decomposition cache spans 2017–2025.",
                 key="bb_decomp_period",
             )
         with bc2:
@@ -553,7 +568,7 @@ def _decomposition() -> None:
         st.plotly_chart(
             charts.contributions_stacked(
                 df_bb, bb_start, bb_end, mode=bb_mode,
-                origin_hovers=bb_hovers, model_label="DFM-BlockBalanced",
+                origin_hovers=bb_hovers, model_label="DFM-block-balanced",
             ),
             width="stretch",
         )
@@ -567,10 +582,10 @@ def _decomposition() -> None:
     st.markdown("<hr/>", unsafe_allow_html=True)
     st.markdown("#### What the three decompositions actually show")
     st.markdown(
-        "DFM-EN and DFM-BlockBalanced allocate each fitted nowcast in proportion "
+        "DFM-EN and DFM-block-balanced allocate each fitted nowcast in proportion "
         "to predicted indicator levels. DFM-TVP allocates only the factor-driven "
         "remainder, in proportion to Stage-1 |loadings| times the drifting bridge. "
-        "None of the three is a sequential news decomposition: Ifo's ifoCAST bars "
+        "None of the three is a sequential news decomposition: ifo's ifoCAST bars "
         "explain the revision between two successive forecasts, whereas these "
         "bars explain a nowcast *level* at one origin. Comparing the three on "
         "the same months shows how much of the 'story' is the economy, and how "
@@ -620,9 +635,9 @@ def _significance() -> None:
     )
     T.callout(
         "A low p-value is evidence against equal squared-error accuracy; a high "
-        "p-value does not prove equality. Regime splits are short, especially "
-        f"The COVID panel has only <b>{D.dm_regime_n('COVID')}</b> quarters, "
-        "so read its tests and rankings as episode-specific evidence."
+        "p-value does not prove equality. Regime windows are short. The COVID "
+        f"panel has only <b>{D.dm_regime_n('COVID')}</b> quarters, so read its "
+        "tests and rankings as episode-specific evidence."
     )
 
     st.markdown("<hr/>", unsafe_allow_html=True)
@@ -679,7 +694,7 @@ def _significance() -> None:
     sv = D.load_sv_calibration()
     if not sv.empty:
         st.markdown("<hr/>", unsafe_allow_html=True)
-        st.markdown("### Prediction-interval calibration (DFM-SV, integrated k=2)")
+        st.markdown("### Prediction-interval calibration (DFM-SV)")
         row = sv.iloc[0]
         T.stat_cards([
             (f"{row['coverage_empirical']:.0%}",
@@ -719,43 +734,38 @@ def _significance() -> None:
     st.dataframe(rmsfe_tbl.round(4), width='stretch')
     T.callout(
         "<b>NSR</b> = noise-to-signal ratio (RMSFE relative to the GDP series' "
-        "own volatility); <b>vs_AR1</b> rebases each RMSFE to the AR(1) "
-        "baseline (&lt;1 means a lower point estimate). Over the full M3 window, "
-        "<b>combo_equal</b> records the lowest RMSFE; its DM test against AR(1) "
-        "does not reject equal accuracy."
+        "own volatility); <b>vs_AR1</b> rebases each RMSFE to the expanding "
+        "AR(1) (&lt;1 means a lower point estimate). Over the full M3 window, "
+        "the equal-weight combination records the lowest RMSFE; its DM test "
+        "against the expanding AR(1) does not reject equal accuracy."
     )
 
 
 def _model_specs() -> None:
     st.markdown("### How each model is built")
     st.markdown(
-        '<div class="spec-intro">Reference cards for every model family in the '
-        "comparison: design choices, fixed hyperparameters, and — for the "
-        "machine-learning benchmarks — exactly which specifications are reported "
-        "and why. All models share one pseudo-real-time protocol below.</div>",
+        '<div class="spec-intro">How each family is specified, which variants '
+        "are reported, and the real-time protocol they all share.</div>",
         unsafe_allow_html=True,
     )
 
     T.spec_protocol_panel("Shared real-time protocol", [
-        ("Sample", "Monthly panel 1991M01–2025M12; evaluation 2011Q1–2025Q4 "
+        ("Sample", "Monthly panel 1991M1–2025M12; evaluation 2011Q1–2025Q4 "
                    "(60 quarters)."),
         ("Information set", "Publication-lag mask on the transformed monthly "
-                            "panel; unreleased months in Q(<i>t</i>) AR(<i>p</i>)-filled "
-                            "(BIC lag selection) on the transformed series, "
-                            "then back-transformed to raw levels before aggregation."),
-        ("Target", "German real GDP, QoQ log-growth, <b>first release</b>."),
-        ("Vintage scope", "Predictor publication lags are enforced, but historical "
-                          "predictor revisions are not reconstructed."),
-        ("Aggregation", "Back-transform the AR-filled panel to raw monthly "
-                        "levels → compute quarterly <b>mean</b> of the three "
-                        "months → re-transform to stationary growth rates "
-                        "(identity for level-stationary series, Δln for "
-                        "log-growth series)."),
-        ("Headline horizon", "M3 (final within-quarter set); DFM also at M1/M2."),
+                            "panel; unreleased months filled by a univariate "
+                            "AR(<i>p</i>) with BIC lag selection, estimated "
+                            "on released history only."),
+        ("Target", "German real GDP, quarter-on-quarter log-growth, "
+                   "<b>first release</b>."),
+        ("Vintage scope", "Publication lags are enforced; historical predictor "
+                          "revisions are not reconstructed."),
+        ("Headline horizon", "M3 (final within-quarter set); DFM variants also "
+                             "at M1 and M2."),
     ])
 
     fam1, fam_tvp, fam2, fam3, fam4, fam5 = st.tabs([
-        "DFM (A-CD-TPN)",
+        "Mixed-frequency DFM",
         "DFM-TVP",
         "DFM-SV",
         "XGBoost",
@@ -766,33 +776,35 @@ def _model_specs() -> None:
     with fam1:
         _dfm_bg, _dfm_fg = C.model_badge("DFM-EN")
         T.spec_card(
-            title="Dynamic Factor Model",
-            family="DFM (A-CD-TPN)",
+            title="Mixed-frequency dynamic factor model",
+            family="Mixed-frequency DFM",
             accent=C.model_color("DFM-EN"),
             badge="Point forecast",
             badge_bg=_dfm_bg,
             badge_fg=_dfm_fg,
             description=(
-                "Mixed-frequency EM-Kalman dynamic factor model "
-                "(`statsmodels DynamicFactorMQ`) following the approximate, "
-                "coordinate-descent, targeted-predictor-nowcasting (A-CD-TPN) "
-                "design of Franjic &amp; Schweikert (2025): <b>A</b> = arithmetic "
-                "aggregation, <b>CD</b> = coordinate descent (Elastic Net "
-                "pre-selection), <b>TPN</b> = targeted-predictor nowcasting. "
-                "Factors summarise the pre-selected panel; the Kalman smoother "
-                "delivers the GDP nowcast and a model-consistent predictive SD."
+                "The backbone of Part II. A mixed-frequency EM-Kalman factor "
+                "model (<code>statsmodels DynamicFactorMQ</code>) summarises "
+                "the selected monthly panel in two latent factors and treats "
+                "quarterly GDP as a partially observed monthly series via the "
+                "Mariano–Murasawa approximation. The Kalman smoother delivers "
+                "the nowcast. Holding this architecture fixed and varying only "
+                "the input set is how the thesis attributes accuracy differences "
+                "to the indicators rather than to the model."
             ),
             rows=[
-                ("Factors", "r = 2 common factors (headline)."),
-                ("Factor dynamics", "VAR / AR(2) on the latent factors."),
-                ("Idiosyncratic", "AR(1) components, internally standardised."),
-                ("Estimation", "Expectation-Maximisation, cap of 200 iterations; "
+                ("Factors", "r = 2 common factors."),
+                ("Factor dynamics", "VAR of order 2 on the latent factors."),
+                ("Idiosyncratic", "AR(1) components."),
+                ("Estimation", "Expectation-maximisation, cap of 200 iterations; "
                                "Kalman smoother for the state."),
             ],
             variants=[
                 ("DFM-ifoCAST", "Fixed 19-series operational reference set."),
-                ("DFM-EN", "Elastic Net selection — primary data-driven configuration."),
-                ("DFM-BlockBalanced", "EN with structural breadth: ≥1 per category, cap 20."),
+                ("DFM-EN", "Recursively updated elastic-net selection — primary "
+                           "data-driven configuration."),
+                ("DFM-block-balanced", "Elastic-net coefficients re-ranked with "
+                                       "≥1 series per category, cap 20."),
                 ("DFM-PLS", "Top 30 indicators by PLS variable importance."),
             ],
             variant_label="Four indicator sets",
@@ -804,7 +816,7 @@ def _model_specs() -> None:
             title="Time-varying-parameter DFM",
             family="DFM-TVP",
             accent=C.model_color("DFM-TVP"),
-            badge="Post-COVID break remedy",
+            badge="Time-varying bridge",
             badge_bg=_tvp_bg,
             badge_fg=_tvp_fg,
             description=(
@@ -957,11 +969,10 @@ def _model_specs() -> None:
             description=(
                 "A deliberately small neural benchmark that isolates "
                 "<b>non-linearity</b>. The panel is first compressed to the two "
-                "estimated factors of the headline DFM-EN (read-only refit at each "
-                "origin); a one-hidden-layer MLP then maps those factors (plus "
-                "lags) to GDP. If it cannot beat the linear DFM, the factor→GDP "
-                "link is effectively linear at this sample size. See the XGBoost "
-                "tab for the tree-based benchmark on the wide panel."
+                "estimated factors of DFM-EN (read-only refit at each origin); "
+                "a one-hidden-layer network then maps those factors (plus lags) "
+                "to GDP. If it cannot beat the linear DFM, the factor→GDP link "
+                "is effectively linear at this sample size."
             ),
             rows=[
                 ("Learner", "MLPRegressor · 1 hidden layer, 16 tanh units, "
@@ -973,7 +984,7 @@ def _model_specs() -> None:
                 ("Prediction", "Seed-averaged over 5 random initialisations."),
             ],
             variants=[
-                ("MLP · factor-augmented", "Factors-only inputs — headline variant."),
+                ("MLP-Factor", "Factors-only inputs — reported variant."),
             ],
             variant_label="Reported variant",
         )
@@ -994,7 +1005,7 @@ def _model_specs() -> None:
                               "break-robust alternative (post-COVID figure)."),
             ("AR(1) + IC", "Expanding AR(1) with recursive intercept correction."),
             ("combo_equal", "Equal-weight average of DFM-ifoCAST, DFM-EN and "
-                             "DFM-BlockBalanced at each origin."),
+                             "DFM-block-balanced at each origin."),
         ])
 
     T.callout(

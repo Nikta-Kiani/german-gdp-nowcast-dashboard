@@ -55,7 +55,9 @@ EN_SELECTION_MATRIX_CSV = (
     OUT_SELECTION / "dfm_input_sets" / "en_only_selection_matrix.csv"
 )
 
-# Selection matrices (binary masks, origin x series)
+# Selection matrices (binary masks, origin x series).
+# "EN (raw)" is the internal key used by the thesis table script; the UI
+# label is "Elastic net".
 SELECTION_MATRICES = {
     "EN (raw)": EN_SELECTION_MATRIX_CSV,
     "Block-balanced (k=20)": OUT_SELECTION / "selection_matrix_blockbalanced_k20.csv",
@@ -83,11 +85,16 @@ IFOCAST_MAPPING_CSV = OUT_NOWCAST / "ifocast_indicator_mapping.csv"
 #   shap    -> XGBoost mean|SHAP| per (feature, quarter)
 #   fixed   -> ifoCAST expert set (constant membership, no time variation)
 SELECTION_METHODS: dict[str, dict] = {
-    "EN (raw)":              {"kind": "binary", "color": "#2D6CB3", "data": True},
-    "Block-balanced (k=20)": {"kind": "binary", "color": "#8F3D58", "data": True},
-    "PLS":                   {"kind": "binary", "color": "#7FB7A6", "data": True},
-    "XGBoost (SHAP)":        {"kind": "shap",   "color": "#3E9B73", "data": True},
-    "ifoCAST (fixed)":       {"kind": "fixed",  "color": "#C9617F", "data": False},
+    "EN (raw)":              {"kind": "binary", "color": "#2D6CB3", "data": True,
+                              "label": "Elastic net"},
+    "Block-balanced (k=20)": {"kind": "binary", "color": "#8F3D58", "data": True,
+                              "label": "Block-balanced (k=20)"},
+    "PLS":                   {"kind": "binary", "color": "#7FB7A6", "data": True,
+                              "label": "PLS"},
+    "XGBoost (SHAP)":        {"kind": "shap",   "color": "#3E9B73", "data": True,
+                              "label": "XGBoost (SHAP)"},
+    "ifoCAST (fixed)":       {"kind": "fixed",  "color": "#C9617F", "data": False,
+                              "label": "ifoCAST (fixed)"},
 }
 SELECTION_METHOD_ORDER = list(SELECTION_METHODS)
 
@@ -273,29 +280,32 @@ class ModelSpec:
 # Baselines stay neutral, related DFM specifications follow a rose-to-plum arc,
 # and distinct model families retain clear blue, amber, teal and violet accents.
 MODELS: dict[str, ModelSpec] = {
-    "RW": ModelSpec("RW", "Random Walk", "#C4CFDE", "Baselines",
+    "RW": ModelSpec("RW", "Random walk", "#C4CFDE", "Baselines",
                     _NC / "nowcast_results_rw.csv", False),
-    "AR1": ModelSpec("AR1", "AR(1)", "#7890A9", "Baselines",
+    "AR1": ModelSpec("AR1", "AR(1), expanding", "#7890A9", "Baselines",
                      _NC / "nowcast_results_ar1.csv", False),
-    "DFM-ifoCAST": ModelSpec("DFM-ifoCAST", "DFM · ifoCAST fixed set", "#E78D94",
-                             "DFM (A-CD-TPN)", _NC / "nowcast_results_dfm_ifocast.csv", True),
-    "DFM-EN": ModelSpec("DFM-EN", "DFM · EN inputs", "#E06C86", "DFM (A-CD-TPN)",
+    "DFM-ifoCAST": ModelSpec("DFM-ifoCAST", "DFM-ifoCAST", "#E78D94",
+                             "Mixed-frequency DFM",
+                             _NC / "nowcast_results_dfm_ifocast.csv", True),
+    "DFM-EN": ModelSpec("DFM-EN", "DFM-EN", "#E06C86", "Mixed-frequency DFM",
                         _NC / "nowcast_results_actpn_en_only.csv", True),
-    # PLS+VIP top-30 input set.
-    "DFM-PLS": ModelSpec("DFM-PLS", "DFM · PLS inputs", "#CE809C", "DFM (A-CD-TPN)",
+    "DFM-PLS": ModelSpec("DFM-PLS", "DFM-PLS", "#CE809C", "Mixed-frequency DFM",
                          _NC / "nowcast_results_actpn_pls_only.csv", True),
-    "DFM-BlockBalanced": ModelSpec("DFM-BlockBalanced", "DFM · block-balanced k=20",
-                                   "#B36487", "DFM (A-CD-TPN)",
-                                   _NC / "nowcast_results_dfm_blockbalanced.csv", True),
-    "DFM-TVP": ModelSpec("DFM-TVP", "DFM-TVP (COVID-robust)", "#9E77C0", "DFM-TVP",
+    "DFM-BlockBalanced": ModelSpec(
+        "DFM-BlockBalanced", "DFM-block-balanced", "#B36487",
+        "Mixed-frequency DFM", _NC / "nowcast_results_dfm_blockbalanced.csv", True,
+    ),
+    "DFM-TVP": ModelSpec("DFM-TVP", "DFM-TVP", "#9E77C0", "DFM-TVP",
                          _NC / "nowcast_results_dfm_tvp.csv", True),
-    "DFM-SV-k2": ModelSpec("DFM-SV-k2", "DFM-SV (k=2, integrated, EN)", "#6796CB", "DFM-SV",
+    "DFM-SV-k2": ModelSpec("DFM-SV-k2", "DFM-SV", "#6796CB", "DFM-SV",
                            _NC / "nowcast_results_actpn_sv_integrated_k2.csv", True),
-    "combo_equal": ModelSpec("combo_equal", "Equal-weight combo", "#DFA94F", "Ensemble",
-                             _NC / "nowcast_path_combo_equal.csv", True),
-    "XGB-Full": ModelSpec("XGB-Full", "XGBoost (Full)", "#55AA91", "Machine learning",
+    "combo_equal": ModelSpec(
+        "combo_equal", "Equal-weight combination", "#DFA94F", "Ensemble",
+        _NC / "nowcast_path_combo_equal.csv", True,
+    ),
+    "XGB-Full": ModelSpec("XGB-Full", "XGB-Full", "#55AA91", "Machine learning",
                           _NC / "nowcast_results_xgb_full.csv", True),
-    "MLP-Factor": ModelSpec("MLP-Factor", "MLP · factor-augmented", "#7E71CB",
+    "MLP-Factor": ModelSpec("MLP-Factor", "MLP-Factor", "#7E71CB",
                             "Machine learning",
                             _NC / "nowcast_results_mlp_factor.csv", True),
 }
@@ -316,7 +326,7 @@ MODEL_ORDER = [
     "XGB-Full", "MLP-Factor",
 ]
 
-FAMILY_ORDER = ["Baselines", "DFM (A-CD-TPN)", "DFM-TVP", "DFM-SV",
+FAMILY_ORDER = ["Baselines", "Mixed-frequency DFM", "DFM-TVP", "DFM-SV",
                 "Ensemble", "Machine learning"]
 
 ACTUAL_COLOR = INK
@@ -334,3 +344,10 @@ def model_badge(key: str) -> tuple[str, str]:
 def model_label(key: str) -> str:
     spec = MODELS.get(key)
     return spec.label if spec else key
+
+
+def selection_label(key: str) -> str:
+    spec = SELECTION_METHODS.get(key)
+    if spec is None:
+        return key
+    return spec.get("label", key)

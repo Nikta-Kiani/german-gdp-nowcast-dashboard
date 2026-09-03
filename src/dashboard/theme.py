@@ -691,34 +691,35 @@ _ARROW = '<div class="flow-arrow">&#9660;</div>'
 
 
 def selection_flow() -> None:
-    """Part I indicator-selection pipeline (HTML analogue of Fig. selection)."""
+    """Part I indicator-selection pipeline."""
     rows = [
-        _box("Predictor panel &amp; target",
+        _box("Predictor panel and target",
              "585 monthly series · Germany · 1991M1–2025M12 · "
              "first-release vintages · target: real GDP QoQ growth",
              "flow-tone-input"),
         _ARROW,
         _box("Stationarity transformations",
-             "series-specific, validated by joint ADF + KPSS",
+             "series-specific, checked by joint ADF + KPSS",
              "flow-tone-prep"),
         _ARROW,
         _box("Preprocessing",
              "coverage mask ≥ 30% · MICE imputation · standardisation · "
-             "back-transform to raw levels → quarterly mean → re-transform",
+             "quarterly aggregates of completed history",
              "flow-tone-prep"),
         _ARROW,
         '<div class="flow-row">'
-        + _box("Elastic Net",
-               "ℓ₁+ℓ₂, 5-fold CV · t-stat pre-filter · COVID weights",
+        + _box("Elastic net",
+               "ℓ₁+ℓ₂, 5-fold CV · t-stat pre-filter · COVID weights · cap 60",
                "flow-tone-meth")
         + _box("Block-balanced (k=20)",
-               "EN + ≥1 per category · cap 20", "flow-tone-meth")
+               "EN re-ranked · ≥1 per category · cap 20", "flow-tone-meth")
         + _box("PLS + VIP",
-               "H=5 latent components · Part I comparison", "flow-tone-meth")
+               "H=5 latent components · top 30 by VIP", "flow-tone-meth")
         + "</div>",
         _ARROW,
-        _box("DFM input set",
-             "EN-only selection matrix  (180 origins, 2011M1–2025M12)",
+        _box("Signals, not a single list",
+             "XGBoost SHAP as a non-linear weight · ifoCAST as a fixed 19-series "
+             "reference · three recursive sets enter the DFM in Part II",
              "flow-tone-dfm"),
     ]
     st.markdown('<div class="flow">' + "".join(rows) + "</div>",
@@ -726,44 +727,46 @@ def selection_flow() -> None:
 
 
 def nowcast_flow() -> None:
-    """Part II nowcasting pipeline (HTML analogue of Fig. nowcast-pipeline)."""
+    """Part II nowcasting pipeline."""
     rows = [
         '<div class="flow-row">'
         + _box("Part I output",
-               "EN-only + block-balanced + ifoCAST fixed set", "flow-tone-input")
+               "Recursive EN, block-balanced and PLS sets + fixed ifoCAST",
+               "flow-tone-input")
         + _box("Target",
                "German GDP, QoQ log-growth, first release", "flow-tone-input")
         + "</div>",
         _ARROW,
         _box("Real-time panel preparation",
-             "pub-lag mask → AR(<i>p</i>) BIC ragged-edge fill "
-             "→ Mariano–Murasawa mixed-frequency encoding "
-             "(monthly indicators + GDP at quarter-end)",
+             "publication-lag mask → AR(<i>p</i>) BIC ragged-edge fill "
+             "→ Mariano–Murasawa mixed-frequency encoding",
              "flow-tone-prep"),
         _ARROW,
         '<div class="flow-row">'
-        + _box("Stage 1 — EM-DFM",
-               "DynamicFactorMQ (EM) · r=2 factors, AR(2) · Kalman smoother",
+        + _box("Mixed-frequency DFM",
+               "DynamicFactorMQ (EM) · r=2 factors, VAR(2) · Kalman smoother",
                "flow-tone-input")
-        + _box("Stage 2 — Bayesian SV",
-               "VAR(p) on factors · AR(1) log-vol · NUTS · multiplier √r̄",
+        + _box("DFM-SV layer",
+               "VAR on factors · AR(1) log-vol · NUTS · feedback into Q<sub>t</sub>",
                "flow-tone-sv")
         + "</div>",
         _ARROW,
         '<div class="flow-row">'
         + _box("Point nowcast",
-               "ŷ_q = E[y | I_t] · Kalman predictive SD", "flow-tone-input")
-        + _box("Predictive distribution",
-               "σ_pred = σ_em·√r̄ · ŷ_q ± z·σ_pred", "flow-tone-out")
+               "ŷ<sub>q</sub> = E[y | I<sub>t</sub>]", "flow-tone-input")
+        + _box("Predictive intervals",
+               "DFM-SV: σ<sub>pred</sub> from the smoother · ŷ<sub>q</sub> ± z·σ<sub>pred</sub>",
+               "flow-tone-out")
         + "</div>",
         _ARROW,
-        _box("Benchmarks (same real-time grid)",
-             "RW · AR(1) · XGB-Full · MLP-Factor · equal-weight combo",
+        _box("Same real-time grid",
+             "RW · expanding / rolling / intercept-corrected AR(1) · "
+             "XGB-Full · MLP-Factor · equal-weight combination",
              "flow-tone-bench"),
         _ARROW,
         _box("Evaluation — 2011Q1–2025Q4, M1/M2/M3 origins",
              "RMSFE · Mincer–Zarnowitz · Diebold–Mariano · "
-             "coverage / CRPS (headline: M3)", "flow-tone-out"),
+             "90% MCS · coverage / CRPS (headline: M3)", "flow-tone-out"),
     ]
     st.markdown('<div class="flow">' + "".join(rows) + "</div>",
                 unsafe_allow_html=True)
@@ -915,7 +918,7 @@ def _ml_nowcast_intro(
             "Training data", "train",
             "1991Q2 → <i>q</i>−1 &nbsp;(expanding window)",
             "All past quarters used to <b>fit model parameters</b>. "
-            "≈79 rows at 2011Q1, growing to ≈135 by 2025Q4. "
+            "79 completed training quarters at 2011Q1, growing to 138 by 2025Q4. "
             "A fresh model is estimated at every origin.",
         ),
         extra_timeline,
@@ -1095,7 +1098,7 @@ def mlp_flow() -> None:
         border="#8B7EF0",
         hdr_color=accent,
         note_bg=mlp_bg,
-        title="MLP · factor-augmented workflow (non-linearity test)",
+        title="MLP-Factor workflow (non-linearity test)",
         model_note=(
             "<b>Non-linearity test.</b> The panel is first compressed to the "
             "<b>two estimated factors of the headline DFM-EN</b> (read-only refit "
@@ -1103,14 +1106,14 @@ def mlp_flow() -> None:
             "those factors (plus lags) to GDP. The question is sharp: with the "
             "data already summarised by DFM factors, can a <i>non-linear</i> "
             "factor→GDP map beat the DFM's <i>linear</i> measurement equation? "
-            "A tie or loss is an honest, publishable null."
+            "A tie or a loss is an informative null at this sample size."
         ),
     )
 
     _ml_flow_section("Terms specific to the factor-augmented MLP")
     _ml_glossary([
         ("Factor-augmented",
-         "Inputs are not the ≈580 raw series but the DFM's two estimated factors "
+         "Inputs are not the ~580 raw series but the DFM's two estimated factors "
          "F1, F2 (each at lags L0–L2 → 6 features). The same factors drive the "
          "linear DFM nowcast, isolating the effect of non-linearity alone."),
         ("Heavy L2 (alpha)",

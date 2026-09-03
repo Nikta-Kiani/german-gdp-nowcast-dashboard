@@ -1,96 +1,47 @@
-# German GDP Nowcast Dashboard
+# German GDP nowcast dashboard
 
-### Interactive companion to a master's thesis on pseudo-real-time German GDP nowcasting
+Interactive companion to the master's thesis
+*[Nowcasting and Indicator Selection in a Data-Rich Environment: An Application to German GDP Growth](#citation)*.
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://german-gdp-nowcast-dashboard.streamlit.app)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.58-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Plotly](https://img.shields.io/badge/Plotly-6.x-3F4F75?logo=plotly&logoColor=white)](https://plotly.com/python/)
-[![Data](https://img.shields.io/badge/data-synthetic%20demo%20%28repo%29%20%7C%20real%20%28live%20demo%29-lightgrey)](docs/DATA.md)
-[![Thesis repo](https://img.shields.io/badge/pipeline-german--gdp--nowcasting-2D6CB3)](https://github.com/Nikta-Kiani/german-gdp-nowcasting)
+[![Pipeline](https://img.shields.io/badge/pipeline-german--gdp--nowcasting-2D6CB3)](https://github.com/Nikta-Kiani/german-gdp-nowcasting)
 
-**[Live demo](https://german-gdp-nowcast-dashboard.streamlit.app) · [Research pipeline repo](https://github.com/Nikta-Kiani/german-gdp-nowcasting) · [Data & privacy notes](docs/DATA.md)**
+**[Live demo](https://german-gdp-nowcast-dashboard.streamlit.app)** (real thesis results) · **[Estimation pipeline](https://github.com/Nikta-Kiani/german-gdp-nowcasting)**
 
-> Which monthly indicators receive weight under different selection methods,
-> and how do competing German GDP nowcasts behave across regimes?
+The first official German GDP estimate arrives about a month after the quarter ends. Until then, a reading on the current quarter has to be inferred from monthly indicators. This dashboard is the front end for that exercise: which of 585 monthly series recursive selectors recover, and how competing nowcasts behave in the pre-COVID, COVID and post-COVID windows.
 
----
-
-## Executive summary
-
-German GDP is only published well after the reference quarter ends.
-**Nowcasting** fills that gap by turning ~580 higher-frequency monthly
-indicators — surveys, industrial production, orders, trade, prices — into a
-live estimate of current-quarter growth, updated as new data arrives.
-
-This dashboard is the interactive front end for a master's thesis that asks
-two linked questions:
-
-1. **Indicator selection** — which of 585 candidate monthly series receive
-   predictive weight for GDP, and does that set shift across
-   economic regimes (pre-COVID / COVID / post-COVID)?
-2. **Nowcasting accuracy** — do models built on those data-driven indicator
-   sets beat classical baselines and a fixed expert-curated panel
-   (ifo's ifoCAST), and how does stochastic volatility affect interval
-   calibration through the pandemic shock?
-
-It presents the full pipeline end to end: from a 585-series candidate panel,
-through four statistical selection signals and one fixed expert reference,
-into eleven nowcasting candidates evaluated out-of-sample over 2011–2025.
-
-## Visuals
+A clean clone runs on a **synthetic demo sample**, so every number you see locally is fabricated. The live demo above uses the real results. Licensed source data are not in this repository.
 
 <p align="center">
-  <img src="assets/screenshots/overview.png" width="90%" alt="Dashboard overview page">
+  <img src="assets/screenshots/overview.png" width="90%" alt="Dashboard overview">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/selection.png" width="44%" alt="Part I — indicator selection, time-varying category emphasis">
+  <img src="assets/screenshots/selection.png" width="44%" alt="Part I — indicator selection">
   &nbsp;
-  <img src="assets/screenshots/nowcasting.png" width="44%" alt="Part II — nowcasting accuracy by economic regime">
+  <img src="assets/screenshots/nowcasting.png" width="44%" alt="Part II — nowcasting results">
 </p>
 
-<p align="center">
-  <img src="assets/screenshots/decomposition.png" width="44%" alt="DFM-TVP nowcast decomposition into category contributions">
-  &nbsp;
-  <img src="assets/screenshots/factor-content.png" width="44%" alt="DFM Stage 1 factor content — category loading shares">
-</p>
+<p align="center"><sub>Screenshots of the three pages with the real thesis results, matching the live demo. A clean clone without staged data runs in demo mode.</sub></p>
 
-> Captured in demo mode (synthetic sample data — see the "Demo mode" banner
-> in each screenshot). The **live demo** linked above runs the same UI
-> against the real thesis results.
+## What the thesis finds
 
-## Methodology at a glance
+**Part I.** Elastic net, a block-balanced variant, partial least squares and gradient-boosting importance all put 65–100% of selected mass on delayed hard activity (production, turnover, orders, trade, construction), against 29% of the panel. They under-weight timely series relative to the panel's 70% lag-0 share. Rank correlations among the four methods are 0.28–0.46; only two series are selected by the elastic net at every origin; mean Jaccard overlap with the frozen ifoCAST set is 0.11.
 
-The dashboard visualises results from a two-part econometric pipeline
-(full detail, code, and reproduction instructions live in the
-[`german-gdp-nowcasting`](https://github.com/Nikta-Kiani/german-gdp-nowcasting) repository):
+**Part II.** Over 60 quarters the equal-weight combination of DFM-EN, DFM-block-balanced and DFM-ifoCAST has the lowest RMSFE (0.677), against 0.784 for DFM-EN and 2.406 for an expanding AR(1). Almost all of that gain is the eight pandemic quarters, and no test against the AR(1) rejects. After 2022 a rolling AR(1) leads (0.207), and every reported DFM has a higher average RMSFE at M3 than at M1. The 90% model confidence set retains all eleven headline models.
 
-**Part I — Indicator selection.** At 180 monthly, expanding-window origins
-(2011M1–2025M12), the panel is re-screened by:
+The monthly panel reduces error when a large disturbance is under way. It does not dominate a short-memory autoregression once growth has settled at a new, low-variance mean.
 
-- **Elastic Net** (ℓ₁+ℓ₂ regularised regression, 5-fold CV, COVID-aware
-  down-weighting) — the primary data-driven screen;
-- **Block-balanced EN** — Elastic Net constrained to keep ≥1 indicator per
-  economic category, so the input set stays structurally diverse;
-- **Partial Least Squares (PLS+VIP)** — a supervised dimensionality-reduction
-  comparison;
-- cross-checked against **XGBoost SHAP** importances (a non-linear signal) and
-  the **ifoCAST** fixed expert panel (a non-data-driven benchmark).
+## Pages
 
-**Part II — Nowcasting.** The selected indicator sets feed a **mixed-frequency
-Dynamic Factor Model** (Mariano–Murasawa encoding, EM-Kalman estimation, 2
-latent factors) with two extensions — **time-varying parameters** and
-**Bayesian stochastic volatility** — plus **XGBoost** and a **factor-augmented
-MLP** as machine-learning benchmarks, against classical **AR(1)** and
-**Random Walk** baselines. All eleven candidates are evaluated out-of-sample
-under publication-lag masking and AR ragged-edge fill. The exercise is
-pseudo-real-time: historical predictor revisions are not reconstructed. The
-dashboard reports RMSFE, Diebold–Mariano tests, a 90% model confidence set,
-Mincer–Zarnowitz regressions, release-block counterfactuals, and interval
-coverage across pre-COVID, COVID and post-COVID windows.
+- **Overview** — design, three findings, and the three evaluation regimes
+- **Part I · Indicator selection** — category composition over time, cross-method agreement, publication lags
+- **Part II · Nowcasting results** — accuracy by regime, within-quarter updates, tests, decompositions, and model cards
 
-## Quickstart
+All comparisons are pseudo-real-time: first-release GDP and publication lags are respected; historical predictor revisions are not reconstructed.
+
+## Run it locally
 
 ```bash
 git clone https://github.com/Nikta-Kiani/german-gdp-nowcast-dashboard.git
@@ -103,73 +54,30 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Opens at <http://localhost:8501>. No data setup required — the app ships with
-a small **synthetic demo dataset** (dashboard-compatible with the real results, but
-every value is fabricated) so it renders immediately on a clean clone. A
-"Demo mode" banner appears in the sidebar whenever it's active.
+Opens at <http://localhost:8501>. No extra data setup is required. A "Demo mode" banner appears in the sidebar whenever the synthetic sample is in use.
 
-To point the dashboard at real results instead, see
-[`data/README.md`](data/README.md) — either drop them into `data/real/` or
-set the `DASHBOARD_DATA_DIR` environment variable.
+To point the app at real outputs, drop them in `data/real/` or set `DASHBOARD_DATA_DIR`. The expected layout is in [`data/README.md`](data/README.md).
 
-## Why the real results aren't in this repo
+## Why the real results are not in this repo
 
-The underlying source data (ifo/Macrobond licensed series) cannot be
-redistributed, so neither can artefacts derived from it. This repo ships code
-+ a synthetic sample only; the **live demo** linked at the top of this README
-runs against the real results from a private deployment, so you can see the
-actual thesis findings without any licensed data being exposed publicly. Full
-rationale in [`docs/DATA.md`](docs/DATA.md).
+The source workbook combines ifo and Macrobond series and cannot be redistributed, so neither can artefacts derived from it. This repository ships code and a synthetic sample only. The live demo loads the real cut from a private data repo at startup; the token never enters git. Details are in [`docs/DATA.md`](docs/DATA.md).
 
-## Repository structure
+The models themselves are estimated in [german-gdp-nowcasting](https://github.com/Nikta-Kiani/german-gdp-nowcasting).
+
+## Layout
 
 ```text
 german-gdp-nowcast-dashboard/
-├── app.py                        # Streamlit entry point — streamlit run app.py
+├── app.py                      # streamlit run app.py
 ├── requirements.txt
-├── .streamlit/
-│   └── config.toml               # brand theme (colours, font)
-├── src/
-│   └── dashboard/
-│       ├── config.py             # paths, colours, model & category registries
-│       ├── data.py               # cached CSV/parquet data-access layer
-│       ├── stats.py              # Diebold–Mariano / forecast-alignment utilities
-│       ├── theme.py              # Plotly template + injected CSS + flow diagrams
-│       ├── charts.py             # Plotly figure builders
-│       └── sections/
-│           ├── overview.py       # landing page
-│           ├── selection.py      # Part I — indicator selection
-│           └── nowcasting.py     # Part II — nowcasting results
-├── data/
-│   ├── README.md                 # data layout & how to point at real results
-│   └── demo/                     # synthetic sample data (tracked in git)
+├── src/dashboard/              # config, data layer, charts, pages
+├── data/demo/                  # synthetic sample (tracked)
+├── data/README.md              # how to stage real outputs
 ├── scripts/
-│   └── generate_demo_data.py     # regenerates data/demo/ from scratch
-├── assets/
-│   └── screenshots/               # dashboard screenshots / demo GIF
-└── docs/
-    └── DATA.md                   # data provenance & privacy notes
+│   ├── generate_demo_data.py   # rebuilds data/demo/
+│   └── stage_real_data.py      # copies pipeline outputs into data/real/
+├── assets/screenshots/
+└── docs/DATA.md
 ```
 
-## Tech stack
 
-- **[Streamlit](https://streamlit.io/)** — app framework
-- **[Plotly](https://plotly.com/python/)** — interactive charts
-- **pandas / numpy / pyarrow** — data wrangling (CSV + Parquet)
-- **SciPy** — Diebold–Mariano significance testing
-
-## Related work
-
-- **[german-gdp-nowcasting](https://github.com/Nikta-Kiani/german-gdp-nowcasting)**
-  — the full research pipeline (data prep, indicator selection, DFM/SV/TVP
-  estimation, ML benchmarks, evaluation) that produces the results this
-  dashboard visualises.
-- *Nowcasting and Indicator Selection in a Data-Rich Environment: An
-  Application to German GDP Growth* — the accompanying master's thesis.
-
-## Citation
-
-If this dashboard or the underlying pipeline supports your research, please
-cite the accompanying master's thesis (see the
-[research repository](https://github.com/Nikta-Kiani/german-gdp-nowcasting)
-for full citation details).

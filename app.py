@@ -1,12 +1,10 @@
-"""German GDP Nowcasting Dashboard — Streamlit entry point.
+"""German GDP nowcast dashboard.
 
 Run with:
     streamlit run app.py
 
-A guided, two-part tour built on top of a master's thesis on pseudo-real-time German
-GDP nowcasting: Part I (indicator selection) and Part II (nowcasting results),
-preceded by an overview. See ``src/dashboard/config.py`` for how the data
-directory (real vs. bundled demo sample) is resolved.
+Overview, Part I (indicator selection) and Part II (nowcasting results).
+Data resolution (real vs bundled demo sample) is in ``src/dashboard/config.py``.
 """
 
 from __future__ import annotations
@@ -48,7 +46,7 @@ with st.sidebar:
         f"<div style='font-weight:700;font-size:1.05rem;color:{C.INK};"
         "line-height:1.3'>Nowcasting German GDP</div>"
         f"<div style='color:{C.SUBTLE};font-size:0.82rem;margin-bottom:1rem'>"
-        "Indicator selection in a data-rich environment</div>",
+        "Master's thesis companion</div>",
         unsafe_allow_html=True,
     )
     choice = st.radio("Navigate", list(PAGES), label_visibility="collapsed",
@@ -63,8 +61,8 @@ with st.sidebar:
     if C.IS_DEMO_DATA:
         st.markdown("<hr/>", unsafe_allow_html=True)
         st.info(
-            "**Demo mode** — figures use a synthetic sample dataset, not the "
-            "real thesis results. See the README for the live demo link.",
+            "**Demo mode** — figures use a synthetic sample, not the thesis "
+            "results. The live demo linked in the README uses the real cut.",
             icon="🧪",
         )
 
