@@ -14,16 +14,22 @@ The first official German GDP estimate arrives about a month after the quarter e
 A clean clone runs on a **synthetic demo sample**, so every number you see locally is fabricated. The live demo above uses the real results. Licensed source data are not in this repository.
 
 <p align="center">
-  <img src="assets/screenshots/overview.png" width="90%" alt="Dashboard overview">
+  <img src="assets/screenshots/selection.png" width="44%" alt="Part I — indicator selection">
+  &nbsp;
+  <img src="assets/screenshots/selection-categories.png" width="44%" alt="Part I — category composition">
 </p>
 
 <p align="center">
-  <img src="assets/screenshots/selection.png" width="44%" alt="Part I — indicator selection">
-  &nbsp;
-  <img src="assets/screenshots/nowcasting.png" width="44%" alt="Part II — nowcasting results">
+  <img src="assets/screenshots/nowcasting.png" width="90%" alt="Part II — nowcasting accuracy">
 </p>
 
-<p align="center"><sub>Screenshots of the three pages with the real thesis results, matching the live demo. A clean clone without staged data runs in demo mode.</sub></p>
+<p align="center">
+  <img src="assets/screenshots/nowcasting-decomposition.png" width="44%" alt="Part II — bias–variance decomposition">
+  &nbsp;
+  <img src="assets/screenshots/nowcasting-factors.png" width="44%" alt="Part II — factor content">
+</p>
+
+<p align="center"><sub>Screenshots of Part I and Part II with the real thesis results, matching the live demo. A clean clone without staged data runs in demo mode.</sub></p>
 
 ## What the thesis finds
 
